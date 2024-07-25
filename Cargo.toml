@@ -1,0 +1,18 @@
+[package]
+name = "dnsr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+domain = { version = "0.10.1", features = [
+    "zonefile",
+    "net",
+    "unstable-server-transport",
+    "unstable-zonetree",
+] }
+notify = { version = "6.1.1" }
+octseq = { version = "0.5.1", default-features = false }
+ring = { version = "0.17.8", features = ["std"] }
+serde = { version = "1.0.204", features = ["derive"], default-features = false }
+serde_yaml = { version = "0.9.34", default-features = false }
+tokio = { version = "1.37", features = ["net"], default-features = false }
