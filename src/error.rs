@@ -6,13 +6,16 @@ pub struct Error {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     Notify,
     SerdeYaml,
     DomainStr,
     DomainZone,
     Io,
+    TSIGFileAlreadyExist,
+    RingUnspecified,
+    Base16,
 }
 
 impl std::fmt::Display for Error {
@@ -34,6 +37,18 @@ impl std::fmt::Display for ErrorKind {
             DomainStr => write!(f, "invalid domain name"),
             DomainZone => write!(f, "domain zone error"),
             Io => write!(f, "io error"),
+            TSIGFileAlreadyExist => write!(f, "tsig file already exists"),
+            RingUnspecified => write!(f, "ring unspecified error"),
+            Base16 => write!(f, "base16 error"),
+        }
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(value: ErrorKind) -> Self {
+        Self {
+            kind: value,
+            message: None,
         }
     }
 }
@@ -80,5 +95,47 @@ impl From<std::io::Error> for Error {
             kind: ErrorKind::Io,
             message: Some(value.to_string()),
         }
+    }
+}
+
+impl From<ring::error::Unspecified> for Error {
+    fn from(_: ring::error::Unspecified) -> Self {
+        Self {
+            kind: ErrorKind::RingUnspecified,
+            message: None,
+        }
+    }
+}
+
+impl From<base16ct::Error> for Error {
+    fn from(value: base16ct::Error) -> Self {
+        Self {
+            kind: ErrorKind::Base16,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+mod macros {
+    #[macro_export]
+    macro_rules! error {
+        ($kind:ident) => {
+            $crate::error::Error {
+                kind: $crate::error::ErrorKind::$kind,
+                message: None,
+            }
+        };
+        ($kind:ident => $string:ident) => {
+            $crate::error::Error {
+                kind: $crate::error::ErrorKind::$kind,
+                message: Some($string.to_string()),
+            }
+        };
+        ($kind:ident => $($tt:tt)*) => {
+            $crate::error::Error {
+                kind: $crate::error::ErrorKind::$kind,
+                message: Some(format!($($tt)*)),
+            }
+        };
     }
 }

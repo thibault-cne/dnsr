@@ -2,6 +2,7 @@ use std::fs::File;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, RwLock};
 
+use convert_case::Casing;
 use domain::base::iana::Class;
 use domain::zonetree::error::ZoneTreeModificationError;
 use domain::zonetree::types::StoredName;
@@ -9,7 +10,7 @@ use domain::zonetree::{Zone, ZoneBuilder, ZoneTree};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
 use serde::Deserialize;
 
-use crate::error::Result;
+use crate::error::{ErrorKind, Result};
 
 pub struct Watcher;
 
@@ -25,17 +26,7 @@ impl Watcher {
         watcher.watch(&path, RecursiveMode::NonRecursive)?;
 
         // Initialize the dns zones
-        let mut domains = {
-            let mut z = zones.write().unwrap();
-
-            let domains = serde_yaml::from_reader::<File, Domains>(File::open(&path)?)?;
-            domains.domains.iter().try_for_each(|d| -> Result<()> {
-                let zone: Zone = d.try_into()?;
-                z.insert_zone(zone)?;
-                Ok(())
-            })?;
-            domains
-        };
+        let mut domains = initialize_dns_zones(&path, &zones)?;
 
         while rx.recv().is_ok() {
             let new_domains = serde_yaml::from_reader::<File, Domains>(File::open(&path)?)?;
@@ -49,11 +40,45 @@ impl Watcher {
     }
 }
 
+fn initialize_dns_zones(
+    domain_path: &std::path::Path,
+    zones: &Arc<RwLock<ZoneTree>>,
+) -> Result<Domains> {
+    let key_folder = std::env::var("TSIG_KEY_FOLDER").unwrap_or("keys".to_string());
+    let path = std::path::Path::new(&key_folder);
+
+    // Create the key folder if it does not exist
+    if !path.is_dir() {
+        std::fs::create_dir(path)?;
+    }
+
+    let mut z = zones.write().unwrap();
+
+    let domains = serde_yaml::from_reader::<File, Domains>(File::open(domain_path)?)?;
+    domains.domains.iter().try_for_each(|d| -> Result<()> {
+        let zone: Zone = d.try_into()?;
+        z.insert_zone(zone)?;
+
+        // If the TSIG key does not exist, create it
+        match crate::tsig::generate_new_tsig(&format!("{}/{}", key_folder, d.file_name())) {
+            Ok(()) => (),
+            Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
+                eprintln!("TSIG key already exists, skipping");
+            }
+            Err(e) => return Err(e),
+        }
+
+        Ok(())
+    })?;
+    Ok(domains)
+}
+
 fn handle_file_change(
     old_domains: &[Domain],
     new_domains: &[Domain],
     zones: &Arc<RwLock<ZoneTree>>,
 ) -> Result<()> {
+    let key_folder = std::env::var("TSIG_KEY_FOLDER").unwrap_or("keys".to_string());
     let deleted_domains = old_domains.iter().filter(|d| !new_domains.contains(d));
     let added_domains = new_domains.iter().filter(|d| !old_domains.contains(d));
     let mut z = zones.write().unwrap();
@@ -65,6 +90,8 @@ fn handle_file_change(
             Err(ZoneTreeModificationError::ZoneExists) => (),
             Err(e) => return Err(e.into()),
         }
+        // # Try to delete the TSIG key
+        crate::tsig::delete_tsig(&format!("{}/{}", key_folder, d.file_name()))?;
     }
 
     for d in added_domains {
@@ -74,6 +101,8 @@ fn handle_file_change(
             Err(ZoneTreeModificationError::ZoneExists) => (),
             Err(e) => return Err(e.into()),
         }
+        // # Try to create the TSIG key
+        crate::tsig::generate_new_tsig(&format!("{}/{}", key_folder, d.file_name()))?;
     }
 
     Ok(())
@@ -89,6 +118,22 @@ pub struct Domains {
 pub enum Domain {
     Unamed(String),
     Named { name: String },
+}
+
+impl Domain {
+    fn domain_name(&self) -> &str {
+        match self {
+            Self::Unamed(name) => name,
+            Self::Named { name } => name,
+        }
+    }
+
+    fn file_name(&self) -> String {
+        match self {
+            Self::Unamed(name) => name.to_case(convert_case::Case::Snake),
+            Self::Named { name } => name.to_case(convert_case::Case::Snake),
+        }
+    }
 }
 
 impl TryFrom<Domain> for Zone {
