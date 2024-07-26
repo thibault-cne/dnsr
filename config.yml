@@ -1,0 +1,12 @@
+---
+# This file is located at the path in the `DNSR_CONFIG` environment variable or in the `config.yml` file in the current directory.
+
+# The path to the folder containing the private keys for the domains.
+tsig_folder: keys
+# The path to the file containing the domains to handle.
+domain_file: domains.yml
+
+# The log configuration.
+log:
+  # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
+  level: info
