@@ -64,7 +64,7 @@ fn initialize_dns_zones(
             Ok(()) => (),
             Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
                 log::info!(
-                    "TSIG key already exists for domain {}, skipping",
+                    "TSIG key already exists for domain {} - skipping",
                     d.domain_name()
                 );
             }
