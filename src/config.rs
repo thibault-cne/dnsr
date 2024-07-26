@@ -1,19 +1,34 @@
+use std::path::Path;
+
 use serde::Deserialize;
 
-use crate::error;
 use crate::error::Result;
 
-#[derive(Deserialize, Clone, Copy)]
-pub struct Config<'c> {
-    pub tsig_folder: &'c str,
-    pub domain_file: &'c str,
+#[derive(Deserialize, Clone)]
+pub struct Config {
+    pub tsig_folder: String,
+    pub domain_file: String,
     pub log: LogConfig,
 }
 
-impl<'c> TryFrom<&'c Vec<u8>> for Config<'c> {
+impl Config {
+    pub fn domain_path(&self) -> &Path {
+        Path::new(&self.domain_file)
+    }
+
+    pub fn tsig_folder(&self) -> &str {
+        &self.tsig_folder
+    }
+
+    pub fn tsig_path(&self) -> &Path {
+        Path::new(&self.tsig_folder)
+    }
+}
+
+impl TryFrom<&Vec<u8>> for Config {
     type Error = crate::error::Error;
 
-    fn try_from(value: &'c Vec<u8>) -> Result<Self> {
+    fn try_from(value: &Vec<u8>) -> Result<Self> {
         Ok(serde_yaml::from_slice(value)?)
     }
 }
@@ -22,7 +37,6 @@ impl<'c> TryFrom<&'c Vec<u8>> for Config<'c> {
 pub struct LogConfig {
     #[serde(deserialize_with = "de_level_filter")]
     pub level: log::LevelFilter,
-    pub color: bool,
 }
 
 fn de_level_filter<'de, D>(deserializer: D) -> std::result::Result<log::LevelFilter, D::Error>

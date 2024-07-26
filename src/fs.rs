@@ -1,37 +1,37 @@
 use std::fs::File;
 use std::sync::mpsc::channel;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use convert_case::Casing;
 use domain::base::iana::Class;
 use domain::zonetree::error::ZoneTreeModificationError;
 use domain::zonetree::types::StoredName;
-use domain::zonetree::{Zone, ZoneBuilder, ZoneTree};
+use domain::zonetree::{Zone, ZoneBuilder};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
 use serde::Deserialize;
 
+use crate::dns::State;
 use crate::error::{ErrorKind, Result};
 
 pub struct Watcher;
 
 impl Watcher {
-    pub fn watch_lock(zones: Arc<RwLock<ZoneTree>>) -> Result<()> {
+    pub fn watch_lock(state: Arc<State>) -> Result<()> {
         // Retrieve path
-        let fname = std::env::var("DOMAIN_FILE").unwrap_or("domains.yml".to_string());
-        let path = std::path::Path::new(&fname).to_owned();
+        let path = state.config().domain_path();
 
         // Initialize the watcher
         let (tx, rx) = channel();
         let mut watcher = Box::new(RecommendedWatcher::new(tx, Config::default())?);
-        watcher.watch(&path, RecursiveMode::NonRecursive)?;
+        watcher.watch(path, RecursiveMode::NonRecursive)?;
 
         // Initialize the dns zones
-        let mut domains = initialize_dns_zones(&path, &zones)?;
+        let mut domains = initialize_dns_zones(&state)?;
 
         while rx.recv().is_ok() {
-            let new_domains = serde_yaml::from_reader::<File, Domains>(File::open(&path)?)?;
+            let new_domains = serde_yaml::from_reader::<File, Domains>(File::open(path)?)?;
 
-            handle_file_change(&domains.domains, &new_domains.domains, &zones)?;
+            handle_file_change(&domains.domains, &new_domains.domains, &state)?;
 
             domains = new_domains;
         }
@@ -40,27 +40,26 @@ impl Watcher {
     }
 }
 
-fn initialize_dns_zones(
-    domain_path: &std::path::Path,
-    zones: &Arc<RwLock<ZoneTree>>,
-) -> Result<Domains> {
-    let key_folder = std::env::var("TSIG_KEY_FOLDER").unwrap_or("keys".to_string());
-    let path = std::path::Path::new(&key_folder);
+fn initialize_dns_zones(state: &Arc<State>) -> Result<Domains> {
+    let path = state.config().tsig_path();
 
     // Create the key folder if it does not exist
     if !path.is_dir() {
         std::fs::create_dir(path)?;
     }
 
-    let mut z = zones.write().unwrap();
-
-    let domains = serde_yaml::from_reader::<File, Domains>(File::open(domain_path)?)?;
+    let domains =
+        serde_yaml::from_reader::<File, Domains>(File::open(state.config().domain_path())?)?;
     domains.domains.iter().try_for_each(|d| -> Result<()> {
         let zone: Zone = d.try_into()?;
-        z.insert_zone(zone)?;
+        state.insert_zone(zone)?;
 
         // If the TSIG key does not exist, create it
-        match crate::tsig::generate_new_tsig(&format!("{}/{}", key_folder, d.file_name())) {
+        match crate::tsig::generate_new_tsig(&format!(
+            "{}/{}",
+            state.config().tsig_folder(),
+            d.file_name()
+        )) {
             Ok(()) => (),
             Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
                 log::info!(target: "tsig_file",
@@ -79,16 +78,15 @@ fn initialize_dns_zones(
 fn handle_file_change(
     old_domains: &[Domain],
     new_domains: &[Domain],
-    zones: &Arc<RwLock<ZoneTree>>,
+    state: &Arc<State>,
 ) -> Result<()> {
     let key_folder = std::env::var("TSIG_KEY_FOLDER").unwrap_or("keys".to_string());
     let deleted_domains = old_domains.iter().filter(|d| !new_domains.contains(d));
     let added_domains = new_domains.iter().filter(|d| !old_domains.contains(d));
-    let mut z = zones.write().unwrap();
 
     for d in deleted_domains {
         let zone: Zone = d.try_into()?;
-        match z.remove_zone(zone.apex_name(), zone.class()) {
+        match state.remove_zone(zone.apex_name(), zone.class()) {
             Ok(_) => (),
             Err(ZoneTreeModificationError::ZoneExists) => (),
             Err(e) => return Err(e.into()),
@@ -99,7 +97,7 @@ fn handle_file_change(
 
     for d in added_domains {
         let zone: Zone = d.try_into()?;
-        match z.insert_zone(zone) {
+        match state.insert_zone(zone) {
             Ok(_) => (),
             Err(ZoneTreeModificationError::ZoneExists) => (),
             Err(e) => return Err(e.into()),

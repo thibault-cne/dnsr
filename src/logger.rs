@@ -34,18 +34,6 @@ impl Logger {
         self
     }
 
-    pub fn with_module_level(mut self, target: &str, level: LevelFilter) -> Logger {
-        self.module_levels.push((target.to_string(), level));
-        self.module_levels
-            .sort_by_key(|(name, _level)| name.len().wrapping_neg());
-        self
-    }
-
-    pub fn with_threads(mut self, threads: bool) -> Logger {
-        self.threads = threads;
-        self
-    }
-
     /// Configure the logger
     pub fn max_level(&self) -> LevelFilter {
         let max_level = self
@@ -128,69 +116,4 @@ impl Log for Logger {
     }
 
     fn flush(&self) {}
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use log::Level;
-
-    #[test]
-    fn test_module_levels_allowlist() {
-        let logger = Logger::new()
-            .with_level(LevelFilter::Off)
-            .with_module_level("dnsr", LevelFilter::Info);
-
-        assert!(logger.enabled(&create_log("dnsr", Level::Info)));
-        assert!(logger.enabled(&create_log("dnsr::module", Level::Info)));
-        assert!(!logger.enabled(&create_log("dnsr::module", Level::Debug)));
-        assert!(!logger.enabled(&create_log("not_dnsr", Level::Debug)));
-        assert!(!logger.enabled(&create_log("not_dnsr::module", Level::Error)));
-    }
-
-    #[test]
-    fn test_module_levels_denylist() {
-        let logger = Logger::new()
-            .with_level(LevelFilter::Debug)
-            .with_module_level("dnsr", LevelFilter::Trace)
-            .with_module_level("dependency", LevelFilter::Info);
-
-        assert!(logger.enabled(&create_log("dnsr", Level::Info)));
-        assert!(logger.enabled(&create_log("dnsr", Level::Trace)));
-        assert!(logger.enabled(&create_log("dnsr::module", Level::Info)));
-        assert!(logger.enabled(&create_log("dnsr::module", Level::Trace)));
-        assert!(logger.enabled(&create_log("not_dnsr", Level::Debug)));
-        assert!(!logger.enabled(&create_log("not_dnsr::module", Level::Trace)));
-        assert!(logger.enabled(&create_log("dependency", Level::Info)));
-        assert!(!logger.enabled(&create_log("dependency", Level::Debug)));
-        assert!(!logger.enabled(&create_log("dependency::module", Level::Debug)));
-        assert!(logger.enabled(&create_log("dependency::module", Level::Warn)));
-    }
-
-    /// Test that enabled() looks for the most specific target.
-    #[test]
-    fn test_module_levels() {
-        let logger = Logger::new()
-            .with_level(LevelFilter::Off)
-            .with_module_level("a", LevelFilter::Off)
-            .with_module_level("a::b::c", LevelFilter::Off)
-            .with_module_level("a::b", LevelFilter::Info);
-
-        assert!(!logger.enabled(&create_log("a", Level::Info)));
-        assert!(logger.enabled(&create_log("a::b", Level::Info)));
-        assert!(!logger.enabled(&create_log("a::b::c", Level::Info)));
-    }
-
-    #[test]
-    fn test_max_level() {
-        let builder = Logger::new();
-        assert_eq!(builder.default_level, LevelFilter::Trace);
-    }
-
-    fn create_log(name: &str, level: Level) -> Metadata {
-        let mut builder = Metadata::builder();
-        builder.level(level);
-        builder.target(name);
-        builder.build()
-    }
 }
