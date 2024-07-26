@@ -1,0 +1,7 @@
+---
+tsig_folder: keys
+domain_file: domains.yml
+
+log:
+  level: info
+  color: true

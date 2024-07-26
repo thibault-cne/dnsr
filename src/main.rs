@@ -16,6 +16,7 @@
 //!   dig @127.0.0.1 -p 8053 AXFR example.com
 
 use std::future::{pending, ready, Future};
+use std::process::exit;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
@@ -34,6 +35,7 @@ use fs::Watcher;
 use octseq::OctetsBuilder;
 use tokio::net::{TcpListener, UdpSocket};
 
+mod config;
 mod error;
 mod fs;
 mod logger;
@@ -41,9 +43,27 @@ mod tsig;
 
 #[tokio::main()]
 async fn main() {
+    // Initialize the logger
     logger::Logger::new()
         .init()
         .expect("Failed to initialize logger");
+
+    // Fetch the configuration
+    let config_path = std::env::var("DNSR_CONFIG").unwrap_or("config.yml".to_string());
+    let bytes = match std::fs::read(&config_path) {
+        Ok(b) => b,
+        Err(e) => {
+            log::error!("Failed to read config file at path {}: {}", config_path, e);
+            exit(1);
+        }
+    };
+    let config = match config::Config::try_from(&bytes) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to parse config file at path {}: {}", config_path, e);
+            exit(1);
+        }
+    };
 
     // Populate a zone tree with test data
     let zones = Arc::new(RwLock::new(ZoneTree::new()));
