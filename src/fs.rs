@@ -63,7 +63,10 @@ fn initialize_dns_zones(
         match crate::tsig::generate_new_tsig(&format!("{}/{}", key_folder, d.file_name())) {
             Ok(()) => (),
             Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
-                eprintln!("TSIG key already exists, skipping");
+                log::info!(
+                    "TSIG key already exists for domain {}, skipping",
+                    d.domain_name()
+                );
             }
             Err(e) => return Err(e),
         }

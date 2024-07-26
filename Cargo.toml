@@ -4,12 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base16ct = "0.2.0"
+bytes = "1.6.1"
+convert_case = "0.6.0"
 domain = { version = "0.10.1", features = [
     "zonefile",
     "net",
     "unstable-server-transport",
     "unstable-zonetree",
 ] }
+log = { version = "0.4.22", features = ["std"] }
 notify = { version = "6.1.1" }
 octseq = { version = "0.5.1", default-features = false }
 ring = { version = "0.17.8", features = ["std"] }

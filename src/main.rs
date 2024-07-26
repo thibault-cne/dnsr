@@ -36,9 +36,15 @@ use tokio::net::{TcpListener, UdpSocket};
 
 mod error;
 mod fs;
+mod logger;
+mod tsig;
 
 #[tokio::main()]
 async fn main() {
+    logger::Logger::new()
+        .init()
+        .expect("Failed to initialize logger");
+
     // Populate a zone tree with test data
     let zones = Arc::new(RwLock::new(ZoneTree::new()));
 
@@ -68,7 +74,7 @@ async fn main() {
         loop {
             tokio::time::sleep(Duration::from_millis(5000)).await;
             for (i, metrics) in udp_metrics.iter().enumerate() {
-                eprintln!(
+                log::info!(
                     "Server status: UDP[{i}]: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
                     metrics.num_connections(),
                     metrics.num_inflight_requests(),
@@ -77,7 +83,7 @@ async fn main() {
                     metrics.num_sent_responses(),
                 );
             }
-            eprintln!(
+            log::info!(
                 "Server status: TCP: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
                 tcp_metrics.num_connections(),
                 tcp_metrics.num_inflight_requests(),
