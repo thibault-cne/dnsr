@@ -9,6 +9,9 @@ type UdpMetric = Vec<Arc<ServerMetrics>>;
 type TcpMetric = Arc<ServerMetrics>;
 
 pub async fn log_svc(config: Config, udp_metrics: UdpMetric, tcp_metrics: TcpMetric) {
+    let udp_metrics = ("UDP", udp_metrics);
+    let tcp_metrics = ("TCP", tcp_metrics);
+
     loop {
         tokio::time::sleep(Duration::from_millis(5000)).await;
 
@@ -25,30 +28,35 @@ trait Metric {
     fn log(&self);
 }
 
-impl Metric for UdpMetric {
+impl<S> Metric for (S, Arc<ServerMetrics>)
+where
+    S: AsRef<str>,
+{
     fn log(&self) {
-        for (i, metrics) in self.iter().enumerate() {
-            log::info!(target: "metrics",
-                "Server status: UDP[{i}]: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
-                metrics.num_connections(),
-                metrics.num_inflight_requests(),
-                metrics.num_pending_writes(),
-                metrics.num_received_requests(),
-                metrics.num_sent_responses(),
-            );
-        }
+        let (name, metrics) = self;
+
+        log::info!(target: "metrics",
+            "Server status: {}: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
+            name.as_ref(),
+            metrics.num_connections(),
+            metrics.num_inflight_requests(),
+            metrics.num_pending_writes(),
+            metrics.num_received_requests(),
+            metrics.num_sent_responses(),
+        );
     }
 }
 
-impl Metric for TcpMetric {
+impl<S> Metric for (S, Vec<Arc<ServerMetrics>>)
+where
+    S: AsRef<str>,
+{
     fn log(&self) {
-        log::info!(target: "metrics",
-            "Server status: TCP: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
-            self.num_connections(),
-            self.num_inflight_requests(),
-            self.num_pending_writes(),
-            self.num_received_requests(),
-            self.num_sent_responses(),
-        );
+        let (name, metrics) = self;
+
+        for (i, m) in metrics.iter().enumerate() {
+            let metric = (format!("{}[{i}]", name.as_ref()), m.clone());
+            metric.log();
+        }
     }
 }
