@@ -4,24 +4,32 @@ use serde::Deserialize;
 
 use crate::error::Result;
 
+pub const BASE_TSIG_PATH: &str = "/etc/dnsr/keys";
+pub const BASE_CONFIG_FILE: &str = "/etc/dnsr/config.yml";
+pub const BASE_DOMAIN_FILE: &str = "/etc/dnsr/domains.yml";
+
 #[derive(Deserialize, Clone)]
 pub struct Config {
-    pub tsig_folder: String,
-    pub domain_file: String,
+    pub tsig_path: Option<String>,
+    pub domain_path: Option<String>,
     pub log: LogConfig,
 }
 
 impl Config {
-    pub fn domain_path(&self) -> &Path {
-        Path::new(&self.domain_file)
+    pub fn tsig_folder(&self) -> &str {
+        self.tsig_path.as_deref().unwrap_or(BASE_TSIG_PATH)
     }
 
-    pub fn tsig_folder(&self) -> &str {
-        &self.tsig_folder
+    pub fn domain_folder(&self) -> &str {
+        self.domain_path.as_deref().unwrap_or(BASE_DOMAIN_FILE)
+    }
+
+    pub fn domain_path(&self) -> &Path {
+        Path::new(self.domain_folder())
     }
 
     pub fn tsig_path(&self) -> &Path {
-        Path::new(&self.tsig_folder)
+        Path::new(self.tsig_folder())
     }
 }
 
@@ -57,6 +65,7 @@ where
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum LevelFilter {
     Off,
     Error,
