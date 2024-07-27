@@ -18,7 +18,6 @@
 use std::future::pending;
 use std::process::exit;
 use std::sync::Arc;
-use std::time::Duration;
 
 use domain::net::server::buf::VecBufSource;
 use domain::net::server::dgram::DgramServer;
@@ -33,6 +32,7 @@ mod dns;
 mod error;
 mod fs;
 mod logger;
+mod metric;
 mod tsig;
 
 #[tokio::main()]
@@ -66,7 +66,7 @@ async fn main() {
         .expect("Failed to initialize custom logger");
 
     // Populate a zone tree with test data
-    let state = Arc::new(dns::State::from(config));
+    let state = Arc::new(dns::State::from(config.clone()));
 
     let addr = "127.0.0.1:8053";
     let svc = Arc::new(service_fn(dns::dns, state.clone()));
@@ -90,29 +90,7 @@ async fn main() {
 
     tokio::spawn(async move { Watcher::watch_lock(state).unwrap() });
 
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_millis(5000)).await;
-            for (i, metrics) in udp_metrics.iter().enumerate() {
-                log::info!(target: "metrics",
-                    "Server status: UDP[{i}]: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
-                    metrics.num_connections(),
-                    metrics.num_inflight_requests(),
-                    metrics.num_pending_writes(),
-                    metrics.num_received_requests(),
-                    metrics.num_sent_responses(),
-                );
-            }
-            log::info!(target: "metrics",
-                "Server status: TCP: #conn={:?}, #in-flight={}, #pending-writes={}, #msgs-recvd={}, #msgs-sent={}",
-                tcp_metrics.num_connections(),
-                tcp_metrics.num_inflight_requests(),
-                tcp_metrics.num_pending_writes(),
-                tcp_metrics.num_received_requests(),
-                tcp_metrics.num_sent_responses(),
-            );
-        }
-    });
+    tokio::spawn(async move { metric::log_svc(config, udp_metrics, tcp_metrics).await });
 
     pending::<()>().await;
 }

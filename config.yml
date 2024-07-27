@@ -10,3 +10,7 @@ domain_file: domains.yml
 log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
   level: info
+  # Enable the udp metrics.
+  enable_udp_metrics: true
+  # Enable the tcp metrics.
+  enable_tcp_metrics: true
