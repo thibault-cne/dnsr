@@ -11,7 +11,7 @@ In order to use the `dnsr` you have to create some configuration files and a fol
 `dnsr` is deployed as a Docker container. You can use the following command to run it:
 
 ```bash
-docker run -d -p 8053:8053/udp -v ./config.yml:/etc/dnsr/config.yml -v ./domains.yml:/etc/dnsr/domains.yml -v ./keys:/etc/dnsr/keys dnsr:latest
+docker run -d -p 8053:8053/udp -v ./config.yml:/etc/dnsr/config.yml -v ./domains.yml:/etc/dnsr/domains.yml -v ./keys:/etc/dnsr/keys ghrc.io/thibault-cne/dnsr:latest
 ```
 
 ### Configuration files
