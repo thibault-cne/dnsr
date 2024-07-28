@@ -41,11 +41,12 @@ impl Watcher {
 }
 
 fn initialize_dns_zones(state: &Arc<State>) -> Result<Domains> {
-    let path = state.config().tsig_path();
-
-    // Create the key folder if it does not exist
-    if !path.is_dir() {
-        std::fs::create_dir(path)?;
+    {
+        // Create the key folder if it does not exist
+        let path = state.config().tsig_path();
+        if !path.is_dir() {
+            std::fs::create_dir(path)?;
+        }
     }
 
     let domains =
@@ -55,11 +56,7 @@ fn initialize_dns_zones(state: &Arc<State>) -> Result<Domains> {
         state.insert_zone(zone)?;
 
         // If the TSIG key does not exist, create it
-        match crate::tsig::generate_new_tsig(&format!(
-            "{}/{}",
-            state.config().tsig_folder(),
-            d.file_name()
-        )) {
+        match crate::tsig::generate_new_tsig(&state.config().tsig_path().join(d.file_name())) {
             Ok(()) => (),
             Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
                 log::info!(target: "tsig_file",
@@ -80,7 +77,6 @@ fn handle_file_change(
     new_domains: &[Domain],
     state: &Arc<State>,
 ) -> Result<()> {
-    let key_folder = std::env::var("TSIG_KEY_FOLDER").unwrap_or("keys".to_string());
     let deleted_domains = old_domains.iter().filter(|d| !new_domains.contains(d));
     let added_domains = new_domains.iter().filter(|d| !old_domains.contains(d));
 
@@ -92,7 +88,7 @@ fn handle_file_change(
             Err(e) => return Err(e.into()),
         }
         // # Try to delete the TSIG key
-        crate::tsig::delete_tsig(&format!("{}/{}", key_folder, d.file_name()))?;
+        crate::tsig::delete_tsig(&state.config().tsig_path().join(d.file_name()))?;
     }
 
     for d in added_domains {
@@ -103,7 +99,7 @@ fn handle_file_change(
             Err(e) => return Err(e.into()),
         }
         // # Try to create the TSIG key
-        crate::tsig::generate_new_tsig(&format!("{}/{}", key_folder, d.file_name()))?;
+        crate::tsig::generate_new_tsig(&state.config().tsig_path().join(d.file_name()))?;
     }
 
     Ok(())
@@ -118,21 +114,28 @@ pub struct Domains {
 #[serde(untagged)]
 pub enum Domain {
     Unamed(String),
-    Named { name: String },
+    Named {
+        name: String,
+        tsig_file_name: Option<String>,
+    },
 }
 
 impl Domain {
     fn domain_name(&self) -> &str {
         match self {
             Self::Unamed(name) => name,
-            Self::Named { name } => name,
+            Self::Named { name, .. } => name,
         }
     }
 
     fn file_name(&self) -> String {
         match self {
             Self::Unamed(name) => name.to_case(convert_case::Case::Snake),
-            Self::Named { name } => name.to_case(convert_case::Case::Snake),
+            Self::Named {
+                tsig_file_name: Some(file_name),
+                ..
+            } => file_name.into(),
+            Self::Named { name, .. } => name.to_case(convert_case::Case::Snake),
         }
     }
 }
@@ -142,7 +145,7 @@ impl TryFrom<Domain> for Zone {
 
     fn try_from(value: Domain) -> Result<Self> {
         let apex_name = match value {
-            Domain::Named { name } => StoredName::from_chars(name.chars())?,
+            Domain::Named { name, .. } => StoredName::from_chars(name.chars())?,
             Domain::Unamed(name) => StoredName::from_chars(name.chars())?,
         };
         Ok(ZoneBuilder::new(apex_name, Class::IN).build())
@@ -154,7 +157,7 @@ impl TryFrom<&Domain> for Zone {
 
     fn try_from(value: &Domain) -> Result<Self> {
         let apex_name = match value {
-            Domain::Named { name } => StoredName::from_chars(name.chars())?,
+            Domain::Named { name, .. } => StoredName::from_chars(name.chars())?,
             Domain::Unamed(name) => StoredName::from_chars(name.chars())?,
         };
         Ok(ZoneBuilder::new(apex_name, Class::IN).build())

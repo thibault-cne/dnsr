@@ -37,24 +37,19 @@ mod tsig;
 
 #[tokio::main()]
 async fn main() {
-    // Initialize the default logger
-    logger::Logger::new()
-        .init()
-        .expect("Failed to initialize logger");
-
     // Fetch the configuration
-    let config_path = std::env::var("DNSR_CONFIG").unwrap_or("config.yml".to_string());
+    let config_path = std::env::var("DNSR_CONFIG").unwrap_or(config::BASE_CONFIG_FILE.into());
     let bytes = match std::fs::read(&config_path) {
         Ok(b) => b,
         Err(e) => {
-            log::error!("Failed to read config file at path {}: {}", config_path, e);
+            eprintln!("Failed to read config file at path {}: {}", config_path, e);
             exit(1);
         }
     };
     let config = match config::Config::try_from(&bytes) {
         Ok(c) => c,
         Err(e) => {
-            log::error!("Failed to parse config file at path {}: {}", config_path, e);
+            eprintln!("Failed to parse config file at path {}: {}", config_path, e);
             exit(1);
         }
     };
