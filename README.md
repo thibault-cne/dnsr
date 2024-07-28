@@ -22,12 +22,7 @@ The `config.yml` file is used to configure the `dnsr server. The following is th
 
 ```yaml
 ---
-# This file is located at the path in the `DNSR_CONFIG` environment variable or in the `config.yml` file in the current directory.
-
-# The path to the folder containing the private keys for the domains.
-tsig_folder: /etc/dnsr/keys
-# The path to the file containing the domains to handle.
-domain_file: /etc/dnsr/domains.yml
+# This file is located at the path in the `DNSR_CONFIG` environment variable or in the `/etc/dnsr/config.yml` file.
 
 # The log configuration.
 log:
@@ -59,5 +54,5 @@ domains:
 
 ### TSIG keys
 
-The `dnsr` server generates the TSIG keys for the domains that it handles. The keys are stored in the `tsig_folder` folder. The keys are generated in a file named after the domain name in snake case. For example, the key for the `example.com` domain will be stored in the `example.com` file.
+The `dnsr` server generates the TSIG keys for the domains that it handles. The keys are stored in the `/etc/dnsr/keys` folder. The keys are generated in a file named after the domain name in snake case. For example, the key for the `example.com` domain will be stored in the `example.com` file except if the `tsig_file_name` is provided in the `domains.yml` file.
 The TSIG keys are deleted when a domain is removed from the `domains.yml` file.
