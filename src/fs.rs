@@ -114,21 +114,28 @@ pub struct Domains {
 #[serde(untagged)]
 pub enum Domain {
     Unamed(String),
-    Named { name: String },
+    Named {
+        name: String,
+        tsig_file_name: Option<String>,
+    },
 }
 
 impl Domain {
     fn domain_name(&self) -> &str {
         match self {
             Self::Unamed(name) => name,
-            Self::Named { name } => name,
+            Self::Named { name, .. } => name,
         }
     }
 
     fn file_name(&self) -> String {
         match self {
             Self::Unamed(name) => name.to_case(convert_case::Case::Snake),
-            Self::Named { name } => name.to_case(convert_case::Case::Snake),
+            Self::Named {
+                tsig_file_name: Some(file_name),
+                ..
+            } => file_name.into(),
+            Self::Named { name, .. } => name.to_case(convert_case::Case::Snake),
         }
     }
 }
@@ -138,7 +145,7 @@ impl TryFrom<Domain> for Zone {
 
     fn try_from(value: Domain) -> Result<Self> {
         let apex_name = match value {
-            Domain::Named { name } => StoredName::from_chars(name.chars())?,
+            Domain::Named { name, .. } => StoredName::from_chars(name.chars())?,
             Domain::Unamed(name) => StoredName::from_chars(name.chars())?,
         };
         Ok(ZoneBuilder::new(apex_name, Class::IN).build())
@@ -150,7 +157,7 @@ impl TryFrom<&Domain> for Zone {
 
     fn try_from(value: &Domain) -> Result<Self> {
         let apex_name = match value {
-            Domain::Named { name } => StoredName::from_chars(name.chars())?,
+            Domain::Named { name, .. } => StoredName::from_chars(name.chars())?,
             Domain::Unamed(name) => StoredName::from_chars(name.chars())?,
         };
         Ok(ZoneBuilder::new(apex_name, Class::IN).build())
