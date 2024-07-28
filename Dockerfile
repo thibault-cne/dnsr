@@ -32,6 +32,9 @@ RUN cargo build --release
 
 FROM alpine:3.19 AS runtime
 
+# Create the configuration directory
+RUN mkdir -p /etc/dnsr
+
 LABEL maintainer="Thibault C. <thibault.chene23@gmail.com>"
 LABEL org.opencontainers.image.source="https://github.com/thibault-cne/dnsr"
 
@@ -39,4 +42,4 @@ COPY --from=builder /usr/dnsr/target/release/dnsr /usr/local/bin
 
 EXPOSE 8053
 
-CMD ["/usr/local/bin/dnsr"]
+ENTRYPOINT ["/usr/local/bin/dnsr"]
