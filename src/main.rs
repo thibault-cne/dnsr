@@ -63,7 +63,7 @@ async fn main() {
     // Populate a zone tree with test data
     let state = Arc::new(dns::State::from(config.clone()));
 
-    let addr = "127.0.0.1:8053";
+    let addr = "0.0.0.0:8053";
     let svc = Arc::new(service_fn(dns::dns, state.clone()));
 
     let sock = UdpSocket::bind(addr).await.unwrap();
