@@ -1,8 +1,7 @@
-FROM rust:alpine3.19 AS chef
+FROM rust:alpine3.19 AS builder
 
+ENV RUSTFLAGS="-C target-feature=-crt-static"
 RUN apk add --no-cache musl-dev
-
-RUN cargo install cargo-chef
 
 WORKDIR /usr
 
@@ -14,23 +13,21 @@ WORKDIR /usr/dnsr
 # Copy the Cargo.toml files
 COPY Cargo.toml Cargo.toml
 
-FROM chef AS planner
-
-RUN cargo chef prepare  --recipe-path recipe.json
-
-FROM planner AS builder
-
-COPY --from=planner /usr/dnsr/recipe.json recipe.json
-# Build dependencies - this is the caching Docker layer!
-RUN cargo chef cook --release --recipe-path recipe.json
+# Compile the dependencies
+RUN cargo build --release
 
 RUN rm -rf src
 
 COPY src src
 
+# Build the project
+RUN touch src/main.rs
 RUN cargo build --release
+RUN strip target/release/dnsr
 
 FROM alpine:3.19 AS runtime
+
+RUN apk add --no-cache libgcc
 
 # Create the configuration directory
 RUN mkdir -p /etc/dnsr
@@ -40,6 +37,6 @@ LABEL org.opencontainers.image.source="https://github.com/thibault-cne/dnsr"
 
 COPY --from=builder /usr/dnsr/target/release/dnsr /usr/local/bin
 
-EXPOSE 8053
+EXPOSE 8053/udp
 
 ENTRYPOINT ["/usr/local/bin/dnsr"]
