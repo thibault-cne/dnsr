@@ -89,6 +89,15 @@ impl From<domain::zonetree::error::ZoneTreeModificationError> for Error {
     }
 }
 
+impl From<domain::zonetree::error::OutOfZone> for Error {
+    fn from(_: domain::zonetree::error::OutOfZone) -> Self {
+        Self {
+            kind: ErrorKind::DomainZone,
+            message: Some("out of zone".to_string()),
+        }
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self {

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::mpsc::channel;
@@ -8,7 +9,7 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher
 
 use crate::dns::State;
 use crate::error::{ErrorKind, Result};
-use crate::key::{Domain, KeyFile, Keys, TryIntoZones};
+use crate::key::{DomainInfo, KeyFile, Keys, TryIntoZone, TryIntoZones};
 
 #[derive(Debug, Clone)]
 pub struct Watcher;
@@ -85,7 +86,7 @@ fn handle_file_change(keys: &Keys, config_path: &Path, state: &Arc<State>) -> Re
 
 fn handle_deleted_keys<'i, I>(state: &Arc<State>, deleted_keys: I) -> Result<()>
 where
-    I: IntoIterator<Item = (&'i KeyFile, &'i Vec<Domain>)>,
+    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<String, DomainInfo>)>,
 {
     for (k, v) in deleted_keys {
         v.try_into_zones()?.into_iter().for_each(|z| {
@@ -101,7 +102,7 @@ where
 
 fn handle_added_keys<'i, I>(state: &Arc<State>, added_keys: I) -> Result<()>
 where
-    I: IntoIterator<Item = (&'i KeyFile, &'i Vec<Domain>)>,
+    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<String, DomainInfo>)>,
 {
     for (k, v) in added_keys {
         v.try_into_zones()?.into_iter().for_each(|z| {
@@ -117,20 +118,25 @@ where
 
 fn handle_modified_keys<'i, I>(state: &Arc<State>, modified_keys: I) -> Result<()>
 where
-    I: IntoIterator<Item = (&'i Vec<Domain>, &'i Vec<Domain>)>,
+    I: IntoIterator<
+        Item = (
+            &'i HashMap<String, DomainInfo>,
+            &'i HashMap<String, DomainInfo>,
+        ),
+    >,
 {
     for (nv, ov) in modified_keys {
         ov.iter()
-            .filter(|d| !nv.contains(d))
+            .filter(|&(d, _)| nv.get(d).is_none())
             .try_for_each(|d| -> Result<()> {
-                let zone: Zone = d.try_into()?;
+                let zone: Zone = d.try_into_zone()?;
                 let _ = state.remove_zone(zone.apex_name(), zone.class());
                 Ok(())
             })?;
         nv.iter()
-            .filter(|d| !ov.contains(d))
+            .filter(|&(d, _)| ov.get(d).is_none())
             .try_for_each(|d| -> Result<()> {
-                let zone: Zone = d.try_into()?;
+                let zone: Zone = d.try_into_zone()?;
                 let _ = state.insert_zone(zone);
                 Ok(())
             })?;
