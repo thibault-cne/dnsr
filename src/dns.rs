@@ -7,12 +7,12 @@ use domain::base::{Message, Name, Rtype, ToName};
 use domain::net::server::message::Request;
 use domain::net::server::service::{CallResult, ServiceError, Transaction, TransactionStream};
 use domain::net::server::util::mk_builder_for_target;
-use domain::zonetree::error::ZoneTreeModificationError;
-use domain::zonetree::{Answer, ReadableZone, Rrset};
-use domain::zonetree::{Zone, ZoneTree};
+use domain::zonetree::{Answer, ReadableZone, Rrset, Zone};
 use octseq::OctetsBuilder;
 
 use crate::config::Config;
+use crate::error::Error;
+use crate::zone::ZoneTree;
 
 type Zones = Arc<RwLock<ZoneTree>>;
 
@@ -31,21 +31,39 @@ impl State {
         N: ToName,
         F: FnOnce(Option<Box<dyn ReadableZone>>) -> Answer,
     {
+        if class != Class::IN {
+            return Answer::new(Rcode::NXDOMAIN);
+        }
+
         let zones = self.zones.read().unwrap();
-        f(zones.find_zone(qname, class).map(|z| z.read()))
+        f(zones.find_zone(qname).map(|z| z.read()))
     }
 
-    pub fn insert_zone(&self, zone: Zone) -> Result<(), ZoneTreeModificationError> {
+    pub fn insert_zone(&self, zone: Zone) -> Result<(), Error> {
+        log::info!(target: "zone_change", "adding zone {}", zone.apex_name());
         let mut zones = self.zones.write().unwrap();
         zones.insert_zone(zone)
     }
 
-    pub fn remove_zone<N>(&self, name: &N, class: Class) -> Result<(), ZoneTreeModificationError>
+    pub fn remove_zone<N>(&self, name: &N, class: Class) -> Result<(), Error>
     where
         N: ToName,
     {
+        log::info!(target: "zone_change", "removing zone {} {}", name.to_bytes(), class);
+
         let mut zones = self.zones.write().unwrap();
-        zones.remove_zone(name, class)
+
+        for z in zones.iter_zones() {
+            log::debug!(target: "zone", "zone {:?}", z);
+        }
+
+        zones.remove_zone(name)?;
+
+        for z in zones.iter_zones() {
+            log::debug!(target: "zone", "zone {}", z.apex_name());
+        }
+
+        Ok(())
     }
 }
 
@@ -99,14 +117,19 @@ async fn handle_axfr_request(
     request: Request<Vec<u8>>,
     state: Arc<State>,
 ) -> TransactionStream<Result<CallResult<Vec<u8>>, ServiceError>> {
-    let zones = state.zones.read().unwrap();
     let mut stream = TransactionStream::default();
 
     // Look up the zone for the queried name.
     let question = request.message().sole_question().unwrap();
-    let zone = zones
-        .find_zone(question.qname(), question.qclass())
-        .map(|zone| zone.read());
+
+    if question.qclass() == Class::IN {
+        let answer = Answer::new(Rcode::NXDOMAIN);
+        add_to_stream(answer, request.message(), &mut stream);
+        return stream;
+    }
+
+    let zones = state.zones.read().unwrap();
+    let zone = zones.find_zone(question.qname()).map(|zone| zone.read());
 
     // If not found, return an NXDOMAIN error response.
     let Some(zone) = zone else {

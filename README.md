@@ -6,12 +6,12 @@
 
 ## How to use it?
 
-In order to use the `dnsr` you have to create some configuration files and a folder to store the TSIG keys generated.
+In order to use the `dnsr` you have to create a configuration file and a folder to store the TSIG keys generated.
 
 `dnsr` is deployed as a Docker container. You can use the following command to run it:
 
 ```bash
-docker run -d -p 8053:8053/udp -v ./config.yml:/etc/dnsr/config.yml -v ./domains.yml:/etc/dnsr/domains.yml -v ./keys:/etc/dnsr/keys ghrc.io/thibault-cne/dnsr:latest
+docker run -d -p 8053:8053/udp -v ./config.yml:/etc/dnsr/config.yml -v ./keys:/etc/dnsr/keys ghrc.io/thibault-cne/dnsr:latest
 ```
 
 ### Configuration files
@@ -32,25 +32,22 @@ log:
   enable_udp_metrics: true
   # Enable the tcp metrics.
   enable_tcp_metrics: true
+
+# The keys and domains configuration
+keys:
+  - key1:
+      - domain1
+      - domain2
+  - key2:
+      - domain3
+      - domain4
 ```
 
-#### domains.yml
+In the previous example, the `dnsr` server will handle the domain1, domain2, domain3 and domain4 domains.
+The key1 will be used to handle the domain1 and domain2 domains and the key2 will be used to handle the domain3 and domain4 domains.
 
-The `domains.yml` file is used to configure the domains that the `dnsr` server will handle. In the following example, the `dnsr` server will handle the `example1.com`, `example2.com`, and `example3.com` domains:
-
-```yaml
----
-domains:
-  - example1.com
-  - name: example2.com
-  - name: example3.com
-    # The file name of the TSIG key for the domain.
-    # The file is located in the `tsig_folder` folder.
-    # This is optional. If not provided, the key file will be named after the domain name in snake case.
-    tsig_file_name: example3.key
-```
-
-**Note:** The `dnsr` server constantly whatches the `domains.yml` file for changes. If the file is modified, the server will reload the domains (e.g. add or remove domains).
+**Note**: The dnsr server constantly whatches the `config.yml` file for changes.
+If the file is modified, the server will reload the domains (e.g. add or remove domains).
 
 ### TSIG keys
 
