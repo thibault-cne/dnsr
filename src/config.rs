@@ -3,19 +3,24 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::error::Result;
+use crate::key::Keys;
 
 pub const TSIG_PATH: &str = "/etc/dnsr/keys";
 pub const BASE_CONFIG_FILE: &str = "/etc/dnsr/config.yml";
-pub const DOMAIN_FILE: &str = "/etc/dnsr/domains.yml";
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     pub log: LogConfig,
+    pub keys: Option<Keys>,
 }
 
 impl Config {
-    pub fn domain_path(&self) -> &Path {
-        Path::new(DOMAIN_FILE)
+    pub fn take_keys(&mut self) -> Option<Keys> {
+        self.keys.take()
+    }
+
+    pub fn config_file_path() -> String {
+        std::env::var("DNSR_CONFIG").unwrap_or(BASE_CONFIG_FILE.into())
     }
 
     pub fn tsig_path(&self) -> &Path {
@@ -31,7 +36,7 @@ impl TryFrom<&Vec<u8>> for Config {
     }
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, Debug)]
 pub struct LogConfig {
     #[serde(deserialize_with = "de_level_filter")]
     pub level: log::LevelFilter,

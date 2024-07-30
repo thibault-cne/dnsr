@@ -25,15 +25,17 @@ use domain::net::server::stream::StreamServer;
 use domain::net::server::util::service_fn;
 use tokio::net::{TcpListener, UdpSocket};
 
-use crate::fs::Watcher;
+use crate::watcher::Watcher;
 
 mod config;
 mod dns;
 mod error;
-mod fs;
+mod key;
 mod logger;
 mod metric;
 mod tsig;
+mod watcher;
+mod zone;
 
 #[tokio::main()]
 async fn main() {
@@ -46,13 +48,14 @@ async fn main() {
             exit(1);
         }
     };
-    let config = match config::Config::try_from(&bytes) {
+    let mut config = match config::Config::try_from(&bytes) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to parse config file at path {}: {}", config_path, e);
             exit(1);
         }
     };
+    let keys = config.take_keys().unwrap_or_default();
 
     // Initialize the custom logger
     logger::Logger::new()
@@ -83,7 +86,7 @@ async fn main() {
 
     tokio::spawn(async move { tcp_srv.run().await });
 
-    tokio::spawn(async move { Watcher::watch_lock(state).unwrap() });
+    tokio::spawn(async move { Watcher::watch_lock(keys, state).unwrap() });
 
     tokio::spawn(async move { metric::log_svc(config, udp_metrics, tcp_metrics).await });
 
