@@ -16,6 +16,7 @@ pub enum ErrorKind {
     TSIGFileAlreadyExist,
     RingUnspecified,
     Base16,
+    Utf8,
 }
 
 impl std::fmt::Display for Error {
@@ -40,6 +41,7 @@ impl std::fmt::Display for ErrorKind {
             TSIGFileAlreadyExist => write!(f, "tsig file already exists"),
             RingUnspecified => write!(f, "ring unspecified error"),
             Base16 => write!(f, "base16 error"),
+            Utf8 => write!(f, "utf8 error"),
         }
     }
 }
@@ -49,6 +51,15 @@ impl From<ErrorKind> for Error {
         Self {
             kind: value,
             message: None,
+        }
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(value: std::str::Utf8Error) -> Self {
+        Self {
+            kind: ErrorKind::Utf8,
+            message: Some(value.to_string()),
         }
     }
 }
@@ -80,11 +91,29 @@ impl From<domain::base::name::FromStrError> for Error {
     }
 }
 
+impl From<domain::base::name::NameError> for Error {
+    fn from(value: domain::base::name::NameError) -> Self {
+        Self {
+            kind: ErrorKind::DomainStr,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
 impl From<domain::zonetree::error::ZoneTreeModificationError> for Error {
     fn from(value: domain::zonetree::error::ZoneTreeModificationError) -> Self {
         Self {
             kind: ErrorKind::DomainZone,
             message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<domain::zonetree::error::OutOfZone> for Error {
+    fn from(_: domain::zonetree::error::OutOfZone) -> Self {
+        Self {
+            kind: ErrorKind::DomainZone,
+            message: Some("out of zone".to_string()),
         }
     }
 }

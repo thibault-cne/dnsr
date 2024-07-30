@@ -35,16 +35,32 @@ log:
 
 # The keys and domains configuration
 keys:
-  - key1:
-      - domain1
-      - domain2
-  - key2:
-      - domain3
-      - domain4
+  key1:
+    sub.example.fr:
+      mname: ns-acme.example.fr.
+      rname: postmaster.example.fr.
+    example.fr:
+      mname: ns-acme.example.fr.
+      rname: postmaster.example.fr.
+  key2:
+    another-example.fr:
+      mname: ns-acme.another-example.fr.
+      rname: postmaster.another-example.fr.
+    fake.another-example.fr:
+      mname: ns-acme.another-example.fr.
+      rname: postmaster.another-example.fr.
 ```
 
-In the previous example, the `dnsr` server will handle the domain1, domain2, domain3 and domain4 domains.
-The key1 will be used to handle the domain1 and domain2 domains and the key2 will be used to handle the domain3 and domain4 domains.
+In the previous example, the `dnsr` server will handle the `sub.example.fr`, `example.fr`, `another-example.fr` and `fake.another-example.fr` domains.
+The key1 will be used to handle the `sub.example.fr` and `example.fr` domains and the key2 will be used to handle the `another-example.fr` and `fake.another-example.fr` domains.
+
+The record created is the following for the `sub.example.fr` domain:
+
+```text
+_acme-challenge.sub.example.fr.    3600 IN    SOA    ns-acme.example.fr. postmaster.example.fr. 1722353587 10800 3600 605800 3600
+```
+
+**Note**: The prefix `_acme-challenge` is automatically added to the domain name.
 
 **Note**: The dnsr server constantly whatches the `config.yml` file for changes.
 If the file is modified, the server will reload the domains (e.g. add or remove domains).

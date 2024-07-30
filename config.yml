@@ -12,7 +12,16 @@ log:
 
 keys:
   key1:
-    - thibault-cne.fr
+    sub.example.fr:
+      mname: ns-acme.example.fr.
+      rname: postmaster.example.fr.
+    example.fr:
+      mname: ns-acme.example.fr.
+      rname: postmaster.example.fr.
   key2:
-    - example.com
-    - example.org
+    another-example.fr:
+      mname: ns-acme.another-example.fr.
+      rname: postmaster.another-example.fr.
+    fake.another-example.fr:
+      mname: ns-acme.another-example.fr.
+      rname: postmaster.another-example.fr.
