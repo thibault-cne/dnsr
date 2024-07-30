@@ -16,6 +16,7 @@ pub enum ErrorKind {
     TSIGFileAlreadyExist,
     RingUnspecified,
     Base16,
+    Utf8,
 }
 
 impl std::fmt::Display for Error {
@@ -40,6 +41,7 @@ impl std::fmt::Display for ErrorKind {
             TSIGFileAlreadyExist => write!(f, "tsig file already exists"),
             RingUnspecified => write!(f, "ring unspecified error"),
             Base16 => write!(f, "base16 error"),
+            Utf8 => write!(f, "utf8 error"),
         }
     }
 }
@@ -49,6 +51,15 @@ impl From<ErrorKind> for Error {
         Self {
             kind: value,
             message: None,
+        }
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(value: std::str::Utf8Error) -> Self {
+        Self {
+            kind: ErrorKind::Utf8,
+            message: Some(value.to_string()),
         }
     }
 }
@@ -73,6 +84,15 @@ impl From<serde_yaml::Error> for Error {
 
 impl From<domain::base::name::FromStrError> for Error {
     fn from(value: domain::base::name::FromStrError) -> Self {
+        Self {
+            kind: ErrorKind::DomainStr,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<domain::base::name::NameError> for Error {
+    fn from(value: domain::base::name::NameError) -> Self {
         Self {
             kind: ErrorKind::DomainStr,
             message: Some(value.to_string()),

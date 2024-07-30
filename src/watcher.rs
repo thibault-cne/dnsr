@@ -9,7 +9,7 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher
 
 use crate::dns::State;
 use crate::error::{ErrorKind, Result};
-use crate::key::{DomainInfo, KeyFile, Keys, TryIntoZone, TryIntoZones};
+use crate::key::{DomainInfo, DomainName, KeyFile, Keys, TryInto};
 
 #[derive(Debug, Clone)]
 pub struct Watcher;
@@ -46,7 +46,7 @@ fn initialize_dns_zones(keys: &Keys, state: &Arc<State>) -> Result<()> {
     }
 
     for (k, v) in keys.iter() {
-        v.try_into_zones()?
+        v.try_into_t()?
             .into_iter()
             .try_for_each(|z| state.insert_zone(z))?;
         match k.generate_key_file() {
@@ -86,10 +86,10 @@ fn handle_file_change(keys: &Keys, config_path: &Path, state: &Arc<State>) -> Re
 
 fn handle_deleted_keys<'i, I>(state: &Arc<State>, deleted_keys: I) -> Result<()>
 where
-    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<String, DomainInfo>)>,
+    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<DomainName, DomainInfo>)>,
 {
     for (k, v) in deleted_keys {
-        v.try_into_zones()?.into_iter().for_each(|z| {
+        v.try_into_t()?.into_iter().for_each(|z| {
             let _ = state.remove_zone(z.apex_name(), z.class());
         });
 
@@ -102,10 +102,10 @@ where
 
 fn handle_added_keys<'i, I>(state: &Arc<State>, added_keys: I) -> Result<()>
 where
-    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<String, DomainInfo>)>,
+    I: IntoIterator<Item = (&'i KeyFile, &'i HashMap<DomainName, DomainInfo>)>,
 {
     for (k, v) in added_keys {
-        v.try_into_zones()?.into_iter().for_each(|z| {
+        v.try_into_t()?.into_iter().for_each(|z| {
             let _ = state.insert_zone(z);
         });
 
@@ -120,8 +120,8 @@ fn handle_modified_keys<'i, I>(state: &Arc<State>, modified_keys: I) -> Result<(
 where
     I: IntoIterator<
         Item = (
-            &'i HashMap<String, DomainInfo>,
-            &'i HashMap<String, DomainInfo>,
+            &'i HashMap<DomainName, DomainInfo>,
+            &'i HashMap<DomainName, DomainInfo>,
         ),
     >,
 {
@@ -129,14 +129,14 @@ where
         ov.iter()
             .filter(|&(d, _)| nv.get(d).is_none())
             .try_for_each(|d| -> Result<()> {
-                let zone: Zone = d.try_into_zone()?;
+                let zone: Zone = d.try_into_t()?;
                 let _ = state.remove_zone(zone.apex_name(), zone.class());
                 Ok(())
             })?;
         nv.iter()
             .filter(|&(d, _)| ov.get(d).is_none())
             .try_for_each(|d| -> Result<()> {
-                let zone: Zone = d.try_into_zone()?;
+                let zone: Zone = d.try_into_t()?;
                 let _ = state.insert_zone(zone);
                 Ok(())
             })?;
