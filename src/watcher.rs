@@ -60,7 +60,7 @@ fn initialize_dns_zones(keys: &Keys, state: &Arc<State>) -> Result<()> {
 fn handle_file_change(keys: &Keys, config_path: &Path, state: &Arc<State>) -> Result<Keys> {
     let mut new_config =
         serde_yaml::from_reader::<File, crate::config::Config>(File::open(config_path)?)?;
-    log::debug!(target: "config_file", "new config {:?}", new_config);
+    log::debug!(target: "config_file", "new config loaded {:?}", new_config);
     let loaded_keys = new_config.take_keys().unwrap_or_default();
 
     let new_domains = loaded_keys.domains();
