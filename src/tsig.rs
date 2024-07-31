@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::io::Write;
 
 use bytes::BytesMut;
+use domain::tsig::{Key, KeyName};
 use ring::hkdf::KeyType;
 use ring::rand::SecureRandom;
 
@@ -21,9 +22,10 @@ where
     Ok(())
 }
 
-pub fn generate_new_tsig<P>(fpath: &P) -> Result<()>
+pub fn generate_new_tsig<P, N>(fpath: &P, name: N) -> Result<Key>
 where
     P: AsRef<OsStr>,
+    N: TryInto<KeyName, Error = error::Error>,
 {
     let path = std::path::Path::new(fpath);
 
@@ -48,5 +50,35 @@ where
     let mut file = std::fs::File::create(path)?;
     file.write_all(&key)?;
 
-    Ok(())
+    Ok(Key::new(
+        domain::tsig::Algorithm::Sha512,
+        &bytes,
+        name.try_into()?,
+        None,
+        None,
+    )?)
+}
+
+pub fn load_tsig<P, N>(fpath: &P, name: N) -> Result<Key>
+where
+    P: AsRef<OsStr>,
+    N: TryInto<KeyName, Error = error::Error>,
+{
+    let path = std::path::Path::new(fpath);
+
+    if !path.is_file() {
+        return Err(
+            error!(TSIGFileNotFound => "TSIG file at path ({}) not found", fpath.as_ref().to_string_lossy()),
+        );
+    }
+
+    let key = std::fs::read(path)?;
+
+    Ok(Key::new(
+        domain::tsig::Algorithm::Sha512,
+        &key,
+        name.try_into()?,
+        None,
+        None,
+    )?)
 }

@@ -2,19 +2,37 @@ use core::str;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use bytes::BytesMut;
 use domain::base::iana::Class;
-use domain::base::{Record, Serial, Ttl};
+use domain::base::{Record, Serial, ToName, Ttl};
 use domain::rdata::Soa;
+use domain::tsig::{Algorithm, Key, KeyName};
 use domain::zonetree::types::{StoredName, StoredRecord};
 use domain::zonetree::{Rrset, SharedRrset, Zone, ZoneBuilder};
 use serde::Deserialize;
 
-use crate::error::Result;
+use crate::error::{ErrorKind, Result};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Keys(HashMap<KeyFile, HashMap<DomainName, DomainInfo>>);
+
+impl Keys {
+    pub fn keys(&self) -> Vec<&KeyFile> {
+        self.0.keys().collect()
+    }
+
+    pub fn domains(&self) -> Vec<(&DomainName, &DomainInfo)> {
+        let mut domains = Vec::new();
+        self.0.iter().for_each(|(_, v)| {
+            v.iter().for_each(|(k, v)| {
+                domains.push((k, v));
+            });
+        });
+        domains
+    }
+}
 
 impl Deref for Keys {
     type Target = HashMap<KeyFile, HashMap<DomainName, DomainInfo>>;
@@ -112,8 +130,12 @@ impl KeyFile {
         PathBuf::from(crate::config::TSIG_PATH).join(&self.0)
     }
 
-    pub fn generate_key_file(&self) -> Result<()> {
-        crate::tsig::generate_new_tsig(&self.as_pathbuf())
+    pub fn generate_key_file(&self) -> Result<Key> {
+        crate::tsig::generate_new_tsig(&self.as_pathbuf(), self)
+    }
+
+    pub fn load_key(&self) -> Result<Key> {
+        crate::tsig::load_tsig(&self.as_pathbuf(), self)
     }
 
     pub fn delete_key_file(&self) -> Result<()> {
@@ -121,8 +143,81 @@ impl KeyFile {
     }
 }
 
+impl TryFrom<&KeyFile> for KeyName {
+    type Error = crate::error::Error;
+
+    fn try_from(kf: &KeyFile) -> Result<Self> {
+        let mut bytes = octseq::Array::new();
+        bytes.resize_raw(kf.0.len())?;
+        bytes.copy_from_slice(kf.0.as_bytes());
+
+        // SAFETY: `bytes` is a valid octet sequence
+        // and `KeyFile` is a valid utf-8 string
+        Ok(unsafe { Self::from_octets_unchecked(bytes) })
+    }
+}
+
+impl TryFrom<&KeyFile> for (KeyName, Algorithm) {
+    type Error = crate::error::Error;
+
+    fn try_from(kf: &KeyFile) -> Result<Self> {
+        Ok((kf.try_into()?, Algorithm::Sha512))
+    }
+}
+
 impl std::fmt::Display for KeyFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+pub struct KeyStore {
+    keys: HashMap<(KeyName, Algorithm), Arc<Key>>,
+}
+
+impl KeyStore {
+    pub fn new_shared() -> Arc<RwLock<Self>> {
+        Arc::new(RwLock::new(Self {
+            keys: HashMap::new(),
+        }))
+    }
+
+    pub fn remove_key(&mut self, key: &KeyFile) -> Result<()> {
+        if self.keys.remove(&key.try_into()?).is_some() {
+            key.delete_key_file()?;
+        }
+        Ok(())
+    }
+
+    pub fn add_key(&mut self, key: &KeyFile) -> Result<()> {
+        let k = match key.generate_key_file() {
+            Ok(key) => key,
+            Err(e) if e.kind == ErrorKind::TSIGFileAlreadyExist => {
+                log::info!(target: "tsig_file", "tsig key {} already exists - skipping", key);
+                key.load_key()?
+            }
+            Err(e) => return Err(e),
+        };
+        self.keys.insert(key.try_into()?, Arc::new(k));
+        Ok(())
+    }
+}
+
+impl domain::tsig::KeyStore for KeyStore {
+    type Key = Arc<Key>;
+
+    fn get_key<N>(&self, name: &N, algorithm: Algorithm) -> Option<Self::Key>
+    where
+        N: ToName,
+    {
+        self.keys.get_key(name, algorithm)
+    }
+}
+
+impl Deref for KeyStore {
+    type Target = HashMap<(KeyName, Algorithm), Arc<Key>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.keys
     }
 }
