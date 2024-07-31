@@ -14,9 +14,13 @@ pub enum ErrorKind {
     DomainZone,
     Io,
     TSIGFileAlreadyExist,
+    TSIGFileNotFound,
+    TSIGKey,
     RingUnspecified,
     Base16,
     Utf8,
+    PushError,
+    OctsetShortBuffer,
 }
 
 impl std::fmt::Display for Error {
@@ -39,9 +43,13 @@ impl std::fmt::Display for ErrorKind {
             DomainZone => write!(f, "domain zone error"),
             Io => write!(f, "io error"),
             TSIGFileAlreadyExist => write!(f, "tsig file already exists"),
+            TSIGFileNotFound => write!(f, "tsig file not found"),
+            TSIGKey => write!(f, "tsig key error"),
             RingUnspecified => write!(f, "ring unspecified error"),
             Base16 => write!(f, "base16 error"),
             Utf8 => write!(f, "utf8 error"),
+            PushError => write!(f, "tsig push error"),
+            OctsetShortBuffer => write!(f, "octset short buffer error"),
         }
     }
 }
@@ -140,6 +148,33 @@ impl From<base16ct::Error> for Error {
     fn from(value: base16ct::Error) -> Self {
         Self {
             kind: ErrorKind::Base16,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<domain::base::message_builder::PushError> for Error {
+    fn from(value: domain::base::message_builder::PushError) -> Self {
+        Self {
+            kind: ErrorKind::PushError,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<domain::tsig::NewKeyError> for Error {
+    fn from(value: domain::tsig::NewKeyError) -> Self {
+        Self {
+            kind: ErrorKind::TSIGKey,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<octseq::ShortBuf> for Error {
+    fn from(value: octseq::ShortBuf) -> Self {
+        Self {
+            kind: ErrorKind::OctsetShortBuffer,
             message: Some(value.to_string()),
         }
     }

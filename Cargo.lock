@@ -184,7 +184,9 @@ dependencies = [
  "octseq",
  "parking_lot",
  "rand",
+ "ring",
  "serde",
+ "smallvec",
  "time",
  "tokio",
  "tracing",
@@ -535,6 +537,7 @@ checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
 dependencies = [
  "bytes",
  "serde",
+ "smallvec",
 ]
 
 [[package]]

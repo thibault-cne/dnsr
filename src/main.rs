@@ -86,7 +86,15 @@ async fn main() {
 
     tokio::spawn(async move { tcp_srv.run().await });
 
-    tokio::spawn(async move { Watcher::watch_lock(keys, state).unwrap() });
+    tokio::spawn(async move {
+        match Watcher::watch_lock(keys, state) {
+            Ok(_) => (),
+            Err(e) => {
+                log::error!(target: "watcher", "failed to watch lock: {}", e);
+                exit(1);
+            }
+        }
+    });
 
     tokio::spawn(async move { metric::log_svc(config, udp_metrics, tcp_metrics).await });
 
