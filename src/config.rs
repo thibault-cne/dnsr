@@ -37,6 +37,8 @@ pub struct LogConfig {
     #[serde(deserialize_with = "de_level_filter")]
     pub level: log::LevelFilter,
     pub enable_metrics: bool,
+    pub enable_thread_id: bool,
+    pub stderr: bool,
 }
 
 fn de_level_filter<'de, D>(deserializer: D) -> std::result::Result<log::LevelFilter, D::Error>

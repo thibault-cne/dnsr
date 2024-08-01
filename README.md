@@ -30,6 +30,10 @@ log:
   level: info
   # Enable the metrics.
   enable_metrics: true
+  # Enable thread ID in logs.
+  enable_thread_id: true
+  # Log on stderr.
+  stderr: false
 
 # The keys and domains configuration
 keys:

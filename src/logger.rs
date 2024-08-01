@@ -43,6 +43,16 @@ impl Logger {
         self
     }
 
+    pub fn with_thread(mut self, threads: bool) -> Logger {
+        self.threads = threads;
+        self
+    }
+
+    pub fn with_stderr(mut self, stderr: bool) -> Logger {
+        self.stderr = stderr;
+        self
+    }
+
     /// Configure the logger
     pub fn max_level(&self) -> LevelFilter {
         let max_level = self
@@ -99,17 +109,7 @@ impl Log for Logger {
                 if self.threads {
                     let thread = std::thread::current();
 
-                    format!("@{}", {
-                        #[cfg(feature = "nightly")]
-                        {
-                            thread.name().unwrap_or(&thread.id().as_u64().to_string())
-                        }
-
-                        #[cfg(not(feature = "nightly"))]
-                        {
-                            thread.name().unwrap_or("?")
-                        }
-                    })
+                    format!("@{}", { thread.name().unwrap_or("?") })
                 } else {
                     "".to_string()
                 }
