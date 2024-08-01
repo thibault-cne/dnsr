@@ -171,8 +171,8 @@ impl From<domain::tsig::NewKeyError> for Error {
     }
 }
 
-impl From<octseq::ShortBuf> for Error {
-    fn from(value: octseq::ShortBuf) -> Self {
+impl From<domain::dep::octseq::ShortBuf> for Error {
+    fn from(value: domain::dep::octseq::ShortBuf) -> Self {
         Self {
             kind: ErrorKind::OctsetShortBuffer,
             message: Some(value.to_string()),

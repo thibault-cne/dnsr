@@ -17,6 +17,9 @@ pub struct Logger {
 
     /// Whether to log on stderr or stdout
     stderr: bool,
+
+    /// Whether to log metrics or not
+    metrics: bool,
 }
 
 impl Logger {
@@ -26,11 +29,17 @@ impl Logger {
             module_levels: Vec::new(),
             threads: false,
             stderr: false,
+            metrics: true,
         }
     }
 
     pub fn with_level(mut self, level: LevelFilter) -> Logger {
         self.default_level = level;
+        self
+    }
+
+    pub fn with_metrics(mut self, metrics: bool) -> Logger {
+        self.metrics = metrics;
         self
     }
 
@@ -73,6 +82,7 @@ impl Log for Logger {
                 .find(|(name, _level)| metadata.target().starts_with(name))
                 .map(|(_name, level)| level)
                 .unwrap_or(&self.default_level)
+            && (self.metrics || metadata.target() != "metrics")
     }
 
     fn log(&self, record: &Record) {

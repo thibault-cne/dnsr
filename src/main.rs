@@ -15,7 +15,9 @@
 //!
 //!   dig @127.0.0.1 -p 8053 AXFR example.com
 
-use std::future::pending;
+use core::future::pending;
+use core::time::Duration;
+
 use std::process::exit;
 use std::sync::Arc;
 
@@ -26,13 +28,13 @@ use domain::net::server::middleware::mandatory::MandatoryMiddlewareSvc;
 use domain::net::server::stream::StreamServer;
 use tokio::net::{TcpListener, UdpSocket};
 
+use crate::service::middleware::{MetricsMiddlewareSvc, Stats, TsigMiddlewareSvc};
 use crate::service::Watcher;
 
 mod config;
 mod error;
 mod key;
 mod logger;
-mod metric;
 mod service;
 mod tsig;
 // mod watcher;
@@ -60,34 +62,34 @@ async fn main() {
     // Initialize the custom logger
     logger::Logger::new()
         .with_level(config.log.level)
+        .with_metrics(config.log.enable_metrics)
         .init()
         .expect("Failed to initialize custom logger");
 
     // Create the DNSR service
     let config = Arc::new(config);
     let dnsr = service::Dnsr::from(config.clone());
+    let stats = Stats::new_shared();
 
     let dnsr = Arc::new(dnsr);
     let dnsr_svc = EdnsMiddlewareSvc::new(dnsr.clone());
     let dnsr_svc = MandatoryMiddlewareSvc::new(dnsr_svc);
+    let dnsr_svc = TsigMiddlewareSvc::new(dnsr.clone(), dnsr_svc);
+    let dnsr_svc = MetricsMiddlewareSvc::new(dnsr_svc, stats.clone());
 
     let addr = "0.0.0.0:53";
 
     // Start the UDP and TCP servers
     let sock = UdpSocket::bind(addr).await.unwrap();
     let sock = Arc::new(sock);
-    let mut udp_metrics = vec![];
     let num_cores = std::thread::available_parallelism().unwrap().get();
     for _i in 0..num_cores {
         let udp_srv = DgramServer::new(sock.clone(), VecBufSource, dnsr_svc.clone());
-        let metrics = udp_srv.metrics();
-        udp_metrics.push(metrics);
         tokio::spawn(async move { udp_srv.run().await });
     }
 
     let sock = TcpListener::bind(addr).await.unwrap();
     let tcp_srv = StreamServer::new(sock, VecBufSource, dnsr_svc.clone());
-    let tcp_metrics = tcp_srv.metrics();
 
     tokio::spawn(async move { tcp_srv.run().await });
 
@@ -101,7 +103,13 @@ async fn main() {
         }
     });
 
-    tokio::spawn(async move { metric::log_svc(config, udp_metrics, tcp_metrics).await });
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            log::info!(target: "metrics", "metrics report: {}", stats.read().unwrap());
+        }
+    });
 
     pending::<()>().await;
 }

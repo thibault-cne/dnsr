@@ -163,7 +163,6 @@ dependencies = [
  "futures",
  "log",
  "notify",
- "octseq 0.5.1",
  "ring",
  "serde",
  "serde_yaml",
@@ -181,7 +180,7 @@ dependencies = [
  "futures",
  "futures-util",
  "libc",
- "octseq 0.5.2-dev",
+ "octseq",
  "parking_lot",
  "rand",
  "ring",
@@ -529,12 +528,6 @@ checksum = "3f203fa8daa7bb185f760ae12bd8e097f63d17041dcdcaf675ac54cdf863170e"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "octseq"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
 
 [[package]]
 name = "octseq"

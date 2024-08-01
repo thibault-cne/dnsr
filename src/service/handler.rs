@@ -7,14 +7,10 @@ use domain::dep::octseq::OctetsBuilder;
 use domain::net::server::message::Request;
 use domain::net::server::service::{CallResult, ServiceError};
 use domain::net::server::util::mk_builder_for_target;
-use domain::rdata::tsig::Time48;
-use domain::tsig::{Key, ServerSequence, ServerTransaction};
 use domain::zonetree::{Answer, Rrset};
 use futures::channel::mpsc::UnboundedSender;
 
-use crate::key::KeyStore;
-
-type HandlerResult<T> = Result<T, ServiceError>;
+pub type HandlerResult<T> = Result<T, ServiceError>;
 
 pub trait HandleDNS {
     fn handle_non_axfr(&self, request: Request<Vec<u8>>) -> HandlerResult<CallResult<Vec<u8>>>;
@@ -41,20 +37,7 @@ impl HandleDNS for super::Dnsr {
         };
 
         let builder = mk_builder_for_target();
-        let mut additional = answer.to_message(request.message(), builder);
-
-        let keystore = self.keystore.read().unwrap();
-        let mut message = request.message().clone();
-        let message = Arc::make_mut(&mut message);
-
-        match ServerTransaction::request::<KeyStore, Vec<u8>>(&keystore, message, Time48::now()) {
-            Ok(None) => (),
-            Ok(Some(transaction)) => {
-                log::info!(target: "svc", "found tsig key for transaction");
-                transaction.answer(&mut additional, Time48::now()).unwrap()
-            }
-            Err(e) => log::error!(target: "svc", "tsig transaction error: {}", e),
-        }
+        let additional = answer.to_message(request.message(), builder);
 
         Ok(CallResult::new(additional))
     }
@@ -64,15 +47,8 @@ impl HandleDNS for super::Dnsr {
         request: Request<Vec<u8>>,
         sender: UnboundedSender<HandlerResult<CallResult<Vec<u8>>>>,
     ) -> HandlerResult<()> {
-        let keystore = self.keystore.read().unwrap();
         let mut message = request.message().clone();
         let message = Arc::make_mut(&mut message);
-
-        let mut server_sequence =
-            match ServerSequence::request::<KeyStore, _>(&keystore, message, Time48::now()) {
-                Ok(sequence) => sequence,
-                _ => return Ok(()),
-            };
 
         let request = Request::new(
             request.client_addr(),
@@ -86,7 +62,7 @@ impl HandleDNS for super::Dnsr {
 
         if question.qclass() == Class::IN {
             let answer = Answer::new(Rcode::NXDOMAIN);
-            add_to_stream(server_sequence.as_mut(), answer, request.message(), &sender);
+            add_to_stream(answer, request.message(), &sender);
             return Ok(());
         }
 
@@ -95,7 +71,7 @@ impl HandleDNS for super::Dnsr {
         // If not found, return an NXDOMAIN error response.
         let Some(zone) = zone else {
             let answer = Answer::new(Rcode::NXDOMAIN);
-            add_to_stream(server_sequence.as_mut(), answer, request.message(), &sender);
+            add_to_stream(answer, request.message(), &sender);
             return Ok(());
         };
 
@@ -120,17 +96,12 @@ impl HandleDNS for super::Dnsr {
         let zone = zone.read();
         let Ok(soa_answer) = zone.query(qname, Rtype::SOA) else {
             let answer = Answer::new(Rcode::SERVFAIL);
-            add_to_stream(server_sequence.as_mut(), answer, request.message(), &sender);
+            add_to_stream(answer, request.message(), &sender);
             return Ok(());
         };
 
         // Push the begin SOA response message into the stream
-        add_to_stream(
-            server_sequence.as_mut(),
-            soa_answer.clone(),
-            request.message(),
-            &sender,
-        );
+        add_to_stream(soa_answer.clone(), request.message(), &sender);
 
         // "The AXFR protocol treats the zone contents as an unordered
         //  collection (or to use the mathematical term, a "set") of
@@ -162,8 +133,6 @@ impl HandleDNS for super::Dnsr {
         let sender = Arc::new(Mutex::new(sender));
         let cloned_sender = sender.clone();
         let cloned_msg = request.message().clone();
-        let server_sequence = Arc::new(Mutex::new(server_sequence));
-        let cloned_server_sequence = server_sequence.clone();
 
         let op = Box::new(move |owner: Name<_>, rrset: &Rrset| {
             if rrset.rtype() != Rtype::SOA {
@@ -175,53 +144,37 @@ impl HandleDNS for super::Dnsr {
 
                 let additional = answer.additional();
                 let sender = cloned_sender.lock().unwrap();
-                let mut server_sequence = cloned_server_sequence.lock().unwrap();
-                add_additional_to_stream(
-                    server_sequence.as_mut(),
-                    additional,
-                    &cloned_msg,
-                    &sender,
-                );
+                add_additional_to_stream(additional, &cloned_msg, &sender);
             }
         });
         zone.walk(op);
 
         let mutex = Arc::try_unwrap(sender).unwrap();
         let sender = mutex.into_inner().unwrap();
-        let mutex = Arc::try_unwrap(server_sequence).unwrap();
-        let mut server_sequence = mutex.into_inner().unwrap();
 
         // Push the end SOA response message into the stream
-        add_to_stream(
-            server_sequence.as_mut(),
-            soa_answer,
-            request.message(),
-            &sender,
-        );
+        add_to_stream(soa_answer, request.message(), &sender);
 
         Ok(())
     }
 }
 
 fn add_to_stream(
-    sequence: Option<&mut ServerSequence<Arc<Key>>>,
     answer: Answer,
     msg: &Message<Vec<u8>>,
     sender: &UnboundedSender<HandlerResult<CallResult<Vec<u8>>>>,
 ) {
     let builder = mk_builder_for_target();
     let additional = answer.to_message(msg, builder);
-    add_additional_to_stream(sequence, additional, msg, sender);
+    add_additional_to_stream(additional, msg, sender);
 }
 
 fn add_additional_to_stream(
-    sequence: Option<&mut ServerSequence<Arc<Key>>>,
     mut additional: AdditionalBuilder<domain::base::StreamTarget<Vec<u8>>>,
     msg: &Message<Vec<u8>>,
     sender: &UnboundedSender<HandlerResult<CallResult<Vec<u8>>>>,
 ) {
     set_axfr_header(msg, &mut additional);
-    sequence.map(|sequence| sequence.answer(&mut additional, Time48::now()));
     let item = Ok(CallResult::new(additional));
     sender.unbounded_send(item).unwrap();
 }

@@ -5,10 +5,8 @@
 log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
   level: debug
-  # Enable the udp metrics.
-  enable_udp_metrics: true
-  # Enable the tcp metrics.
-  enable_tcp_metrics: true
+  # Enable the metrics.
+  enable_metrics: false
 
 keys:
   key1:

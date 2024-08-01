@@ -20,6 +20,7 @@ use self::handler::HandleDNS;
 pub use self::watcher::Watcher;
 
 mod handler;
+pub mod middleware;
 mod watcher;
 
 pub type KeyStore = Arc<RwLock<key::KeyStore>>;
