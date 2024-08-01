@@ -6,7 +6,7 @@ log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
   level: debug
   # Enable the metrics.
-  enable_metrics: false
+  enable_metrics: true
 
 keys:
   key1:
