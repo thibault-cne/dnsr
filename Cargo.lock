@@ -60,10 +60,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "base16ct"
-version = "0.2.0"
+name = "base64"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bitflags"
@@ -156,13 +156,14 @@ dependencies = [
 name = "dnsr"
 version = "0.1.0"
 dependencies = [
- "base16ct",
+ "base64",
  "bytes",
  "convert_case",
  "domain",
+ "futures",
  "log",
  "notify",
- "octseq",
+ "octseq 0.5.1",
  "ring",
  "serde",
  "serde_yaml",
@@ -172,8 +173,7 @@ dependencies = [
 [[package]]
 name = "domain"
 version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eefe29e8dd614abbee51a1616654cab123c4c56850ab83f5b7f1e1f9977bf7c"
+source = "git+https://github.com/thibault-cne/domain?branch=main#14f857fbc018f29674a4d0cac09a37eda7ac6061"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -181,11 +181,12 @@ dependencies = [
  "futures",
  "futures-util",
  "libc",
- "octseq",
+ "octseq 0.5.2-dev",
  "parking_lot",
  "rand",
  "ring",
  "serde",
+ "siphasher",
  "smallvec",
  "time",
  "tokio",
@@ -534,6 +535,11 @@ name = "octseq"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
+
+[[package]]
+name = "octseq"
+version = "0.5.2-dev"
+source = "git+https://github.com/NLnetLabs/octseq.git?rev=3f7797f4274af0a52e66105250ee1186ff2ab6ac#3f7797f4274af0a52e66105250ee1186ff2ab6ac"
 dependencies = [
  "bytes",
  "serde",
@@ -733,6 +739,12 @@ dependencies = [
  "serde",
  "unsafe-libyaml",
 ]
+
+[[package]]
+name = "siphasher"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 
 [[package]]
 name = "slab"

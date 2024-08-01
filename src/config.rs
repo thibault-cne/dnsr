@@ -11,14 +11,10 @@ pub const BASE_CONFIG_FILE: &str = "/etc/dnsr/config.yml";
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     pub log: LogConfig,
-    pub keys: Option<Keys>,
+    pub keys: Keys,
 }
 
 impl Config {
-    pub fn take_keys(&mut self) -> Option<Keys> {
-        self.keys.take()
-    }
-
     pub fn config_file_path() -> String {
         std::env::var("DNSR_CONFIG").unwrap_or(BASE_CONFIG_FILE.into())
     }

@@ -21,20 +21,21 @@ use std::sync::Arc;
 
 use domain::net::server::buf::VecBufSource;
 use domain::net::server::dgram::DgramServer;
+use domain::net::server::middleware::edns::EdnsMiddlewareSvc;
+use domain::net::server::middleware::mandatory::MandatoryMiddlewareSvc;
 use domain::net::server::stream::StreamServer;
-use domain::net::server::util::service_fn;
 use tokio::net::{TcpListener, UdpSocket};
 
-use crate::watcher::Watcher;
+use crate::service::Watcher;
 
 mod config;
-mod dns;
 mod error;
 mod key;
 mod logger;
 mod metric;
+mod service;
 mod tsig;
-mod watcher;
+// mod watcher;
 mod zone;
 
 #[tokio::main()]
@@ -48,14 +49,13 @@ async fn main() {
             exit(1);
         }
     };
-    let mut config = match config::Config::try_from(&bytes) {
+    let config = match config::Config::try_from(&bytes) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to parse config file at path {}: {}", config_path, e);
             exit(1);
         }
     };
-    let keys = config.take_keys().unwrap_or_default();
 
     // Initialize the custom logger
     logger::Logger::new()
@@ -63,31 +63,36 @@ async fn main() {
         .init()
         .expect("Failed to initialize custom logger");
 
-    // Populate a zone tree with test data
-    let state = Arc::new(dns::State::from(config.clone()));
+    // Create the DNSR service
+    let config = Arc::new(config);
+    let dnsr = service::Dnsr::from(config.clone());
 
-    let addr = "0.0.0.0:8053";
-    let svc = Arc::new(service_fn(dns::dns, state.clone()));
+    let dnsr = Arc::new(dnsr);
+    let dnsr_svc = EdnsMiddlewareSvc::new(dnsr.clone());
+    let dnsr_svc = MandatoryMiddlewareSvc::new(dnsr_svc);
 
+    let addr = "0.0.0.0:53";
+
+    // Start the UDP and TCP servers
     let sock = UdpSocket::bind(addr).await.unwrap();
     let sock = Arc::new(sock);
     let mut udp_metrics = vec![];
     let num_cores = std::thread::available_parallelism().unwrap().get();
     for _i in 0..num_cores {
-        let udp_srv = DgramServer::new(sock.clone(), VecBufSource, svc.clone());
+        let udp_srv = DgramServer::new(sock.clone(), VecBufSource, dnsr_svc.clone());
         let metrics = udp_srv.metrics();
         udp_metrics.push(metrics);
         tokio::spawn(async move { udp_srv.run().await });
     }
 
     let sock = TcpListener::bind(addr).await.unwrap();
-    let tcp_srv = StreamServer::new(sock, VecBufSource, svc);
+    let tcp_srv = StreamServer::new(sock, VecBufSource, dnsr_svc.clone());
     let tcp_metrics = tcp_srv.metrics();
 
     tokio::spawn(async move { tcp_srv.run().await });
 
     tokio::spawn(async move {
-        match Watcher::watch_lock(keys, state) {
+        match dnsr.watch_lock() {
             Ok(_) => (),
             Err(e) => {
                 log::error!(target: "watcher", "failed to watch lock: {}", e);

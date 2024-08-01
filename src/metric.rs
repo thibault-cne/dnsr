@@ -8,7 +8,7 @@ use crate::config::Config;
 type UdpMetric = Vec<Arc<ServerMetrics>>;
 type TcpMetric = Arc<ServerMetrics>;
 
-pub async fn log_svc(config: Config, udp_metrics: UdpMetric, tcp_metrics: TcpMetric) {
+pub async fn log_svc(config: Arc<Config>, udp_metrics: UdpMetric, tcp_metrics: TcpMetric) {
     let udp_metrics = ("UDP", udp_metrics);
     let tcp_metrics = ("TCP", tcp_metrics);
 

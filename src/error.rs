@@ -17,10 +17,10 @@ pub enum ErrorKind {
     TSIGFileNotFound,
     TSIGKey,
     RingUnspecified,
-    Base16,
     Utf8,
     PushError,
     OctsetShortBuffer,
+    Base64,
 }
 
 impl std::fmt::Display for Error {
@@ -46,7 +46,7 @@ impl std::fmt::Display for ErrorKind {
             TSIGFileNotFound => write!(f, "tsig file not found"),
             TSIGKey => write!(f, "tsig key error"),
             RingUnspecified => write!(f, "ring unspecified error"),
-            Base16 => write!(f, "base16 error"),
+            Base64 => write!(f, "base64 error"),
             Utf8 => write!(f, "utf8 error"),
             PushError => write!(f, "tsig push error"),
             OctsetShortBuffer => write!(f, "octset short buffer error"),
@@ -135,19 +135,10 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<ring::error::Unspecified> for Error {
-    fn from(_: ring::error::Unspecified) -> Self {
+impl From<base64::DecodeError> for Error {
+    fn from(value: base64::DecodeError) -> Self {
         Self {
-            kind: ErrorKind::RingUnspecified,
-            message: None,
-        }
-    }
-}
-
-impl From<base16ct::Error> for Error {
-    fn from(value: base16ct::Error) -> Self {
-        Self {
-            kind: ErrorKind::Base16,
+            kind: ErrorKind::Base64,
             message: Some(value.to_string()),
         }
     }
@@ -157,6 +148,15 @@ impl From<domain::base::message_builder::PushError> for Error {
     fn from(value: domain::base::message_builder::PushError) -> Self {
         Self {
             kind: ErrorKind::PushError,
+            message: Some(value.to_string()),
+        }
+    }
+}
+
+impl From<domain::tsig::GenerateKeyError> for Error {
+    fn from(value: domain::tsig::GenerateKeyError) -> Self {
+        Self {
+            kind: ErrorKind::TSIGKey,
             message: Some(value.to_string()),
         }
     }
