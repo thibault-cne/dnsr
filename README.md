@@ -28,10 +28,12 @@ The `config.yml` file is used to configure the `dnsr server. The following is th
 log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
   level: info
-  # Enable the udp metrics.
-  enable_udp_metrics: true
-  # Enable the tcp metrics.
-  enable_tcp_metrics: true
+  # Enable the metrics.
+  enable_metrics: true
+  # Enable thread ID in logs.
+  enable_thread_id: true
+  # Log on stderr.
+  stderr: false
 
 # The keys and domains configuration
 keys:

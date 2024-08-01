@@ -1,10 +1,8 @@
 use std::ffi::OsStr;
 use std::io::Write;
 
-use bytes::BytesMut;
+use base64::Engine;
 use domain::tsig::{Key, KeyName};
-use ring::hkdf::KeyType;
-use ring::rand::SecureRandom;
 
 use crate::error;
 use crate::error::Result;
@@ -37,26 +35,16 @@ where
     }
 
     // Generate the TSIG key
-    let algorithm = ring::hmac::HMAC_SHA512;
     let rng = ring::rand::SystemRandom::new();
-    let mut bytes = BytesMut::with_capacity(algorithm.len());
-    bytes.resize(algorithm.len(), 0);
-    rng.fill(&mut bytes)?;
+    let name = name.try_into()?;
 
-    let hex_len = base16ct::encoded_len(&bytes);
-    let mut key = vec![0u8; hex_len];
-    base16ct::lower::encode(&bytes, &mut key)?;
+    let (key, secret) = Key::generate(domain::tsig::Algorithm::Sha512, &rng, name, None, None)?;
+    let secret = base64::engine::general_purpose::STANDARD.encode(&secret);
 
     let mut file = std::fs::File::create(path)?;
-    file.write_all(&key)?;
+    write!(file, "{}", secret)?;
 
-    Ok(Key::new(
-        domain::tsig::Algorithm::Sha512,
-        &bytes,
-        name.try_into()?,
-        None,
-        None,
-    )?)
+    Ok(key)
 }
 
 pub fn load_tsig<P, N>(fpath: &P, name: N) -> Result<Key>
@@ -72,11 +60,12 @@ where
         );
     }
 
-    let key = std::fs::read(path)?;
+    let secret = std::fs::read(path)?;
+    let secret = base64::engine::general_purpose::STANDARD.decode(secret)?;
 
     Ok(Key::new(
         domain::tsig::Algorithm::Sha512,
-        &key,
+        &secret,
         name.try_into()?,
         None,
         None,

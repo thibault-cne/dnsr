@@ -2,6 +2,7 @@ use core::str;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
 use bytes::BytesMut;
@@ -147,13 +148,7 @@ impl TryFrom<&KeyFile> for KeyName {
     type Error = crate::error::Error;
 
     fn try_from(kf: &KeyFile) -> Result<Self> {
-        let mut bytes = octseq::Array::new();
-        bytes.resize_raw(kf.0.len())?;
-        bytes.copy_from_slice(kf.0.as_bytes());
-
-        // SAFETY: `bytes` is a valid octet sequence
-        // and `KeyFile` is a valid utf-8 string
-        Ok(unsafe { Self::from_octets_unchecked(bytes) })
+        Ok(KeyName::from_str(&kf.0)?)
     }
 }
 
@@ -171,6 +166,7 @@ impl std::fmt::Display for KeyFile {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct KeyStore {
     keys: HashMap<(KeyName, Algorithm), Arc<Key>>,
 }

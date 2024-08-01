@@ -37,6 +37,6 @@ LABEL org.opencontainers.image.source="https://github.com/thibault-cne/dnsr"
 
 COPY --from=builder /usr/dnsr/target/release/dnsr /usr/local/bin
 
-EXPOSE 8053/udp
+EXPOSE 53/udp
 
 ENTRYPOINT ["/usr/local/bin/dnsr"]
