@@ -1,24 +1,29 @@
 use core::future::{ready, Ready};
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use domain::base::iana::Rcode;
 use domain::base::message_builder::AdditionalBuilder;
 use domain::base::wire::Composer;
-use domain::base::{Message, Name, Rtype, StreamTarget, ToName};
+use domain::base::{Message, Name, ParsedName, Rtype, StreamTarget, ToName, Ttl};
 use domain::dep::octseq::Octets;
 use domain::net::server::message::Request;
 use domain::net::server::middleware::stream::{MiddlewareStream, PostprocessingStream};
 use domain::net::server::service::{Service, ServiceResult};
 use domain::net::server::util::mk_builder_for_target;
 use domain::rdata::tsig::Time48;
+use domain::rdata::{AllRecordData, ZoneRecordData};
 use domain::tsig::{Key, ServerSequence, ServerTransaction};
-use domain::zonetree::Answer;
+use domain::zonetree::types::{StoredRecord, StoredRecordData};
+use domain::zonetree::{Answer, Rrset};
 use futures::stream::Once;
+use futures::FutureExt;
 
 use crate::key::{DomainName, KeyStore, Keys};
+use crate::service::handler::HandlerResult;
 
 #[derive(Clone, Debug)]
 pub struct TsigMiddlewareSvc<Octets, Svc> {
@@ -42,18 +47,36 @@ where
     }
 
     fn postprocess_non_axfr(
-        keystore: &KeyStore,
-        keys: &Keys,
+        dnsr: Arc<crate::service::Dnsr>,
         qname: &Name<Bytes>,
         message: &mut Message<Vec<u8>>,
         response: &mut AdditionalBuilder<StreamTarget<Svc::Target>>,
     ) -> Result<(), AdditionalBuilder<StreamTarget<<Svc as Service<RequestOctets>>::Target>>> {
-        match ServerTransaction::request::<KeyStore, Vec<u8>>(keystore, message, Time48::now()) {
+        let keystore = dnsr.keystore.read().unwrap();
+        let keys = &dnsr.config.keys;
+        let cloned_message = message.clone();
+        let bytes = cloned_message.as_slice();
+        let message_bytes = Message::from_octets(Bytes::copy_from_slice(bytes)).unwrap();
+
+        match ServerTransaction::request::<KeyStore, Vec<u8>>(&keystore, message, Time48::now()) {
             Ok(None) => Ok(()),
             Ok(Some(transaction)) if validate_key_scope(keys, transaction.key(), qname) => {
                 log::info!(target: "svc", "found tsig key for transaction");
-                transaction.answer(response, Time48::now()).unwrap();
-                Ok(())
+
+                match handle_update_query(dnsr.clone(), message_bytes) {
+                    Ok(_) => {
+                        log::info!(target: "update", "successfully updated the zone");
+                        log::debug!("{:?}", dnsr.zones);
+                        transaction.answer(response, Time48::now()).unwrap();
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::error!(target: "update", "error while updating the dnsr zones: {}", e);
+                        let answer = Answer::new(Rcode::SERVFAIL);
+                        let builder = mk_builder_for_target();
+                        Err(answer.to_message(message, builder))
+                    }
+                }
             }
             Ok(_) => {
                 log::error!(target: "tsig", "tsig used is not in the valid scope");
@@ -71,18 +94,36 @@ where
     }
 
     fn postprocess_axfr(
-        keystore: &KeyStore,
-        keys: &Keys,
+        dnsr: Arc<crate::service::Dnsr>,
         qname: &Name<Bytes>,
         message: &mut Message<Vec<u8>>,
         response: &mut AdditionalBuilder<StreamTarget<Svc::Target>>,
     ) -> Result<(), AdditionalBuilder<StreamTarget<<Svc as Service<RequestOctets>>::Target>>> {
-        match ServerSequence::request::<KeyStore, Vec<u8>>(keystore, message, Time48::now()) {
+        let keystore = dnsr.keystore.read().unwrap();
+        let keys = &dnsr.config.keys;
+        let cloned_message = message.clone();
+        let bytes = cloned_message.as_slice();
+        let message_bytes = Message::from_octets(Bytes::copy_from_slice(bytes)).unwrap();
+
+        match ServerSequence::request::<KeyStore, Vec<u8>>(&keystore, message, Time48::now()) {
             Ok(None) => Ok(()),
             Ok(Some(mut sequence)) if validate_key_scope(keys, sequence.key(), qname) => {
                 log::info!(target: "svc", "found tsig key for transaction");
-                sequence.answer(response, Time48::now()).unwrap();
-                Ok(())
+
+                match handle_update_query(dnsr.clone(), message_bytes) {
+                    Ok(_) => {
+                        log::info!(target: "update", "successfully updated the zone");
+                        log::debug!("{:?}", dnsr.zones);
+                        sequence.answer(response, Time48::now()).unwrap();
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::error!(target: "update", "error while updating the dnsr zones: {}", e);
+                        let answer = Answer::new(Rcode::SERVFAIL);
+                        let builder = mk_builder_for_target();
+                        Err(answer.to_message(message, builder))
+                    }
+                }
             }
             Ok(_) => {
                 log::error!(target: "tsig", "tsig used is not in the valid scope");
@@ -104,8 +145,6 @@ where
         request: &Request<RequestOctets>,
         response: &mut AdditionalBuilder<StreamTarget<Svc::Target>>,
     ) -> Result<(), AdditionalBuilder<StreamTarget<<Svc as Service<RequestOctets>>::Target>>> {
-        let keystore = dnsr.keystore.read().unwrap();
-        let keys = &dnsr.config.keys;
         let bytes = request.message().as_slice();
         let mut message = Message::from_octets(bytes.to_vec()).unwrap();
         let qname = request
@@ -122,9 +161,9 @@ where
                 .map(|q| q.qtype() == Rtype::AXFR),
             Ok(true)
         ) {
-            Self::postprocess_non_axfr(&keystore, keys, &qname, &mut message, response)
+            Self::postprocess_non_axfr(dnsr, &qname, &mut message, response)
         } else {
-            Self::postprocess_axfr(&keystore, keys, &qname, &mut message, response)
+            Self::postprocess_axfr(dnsr, &qname, &mut message, response)
         }
     }
 
@@ -175,11 +214,84 @@ where
 }
 
 fn validate_key_scope(keys: &Keys, key: &Key, dname: &Name<Bytes>) -> bool {
-    let key_file = dbg!(key.name().into());
+    let key_file = key.name().into();
     let dname = Into::<DomainName>::into(dname).strip_prefix();
 
-    dbg!(keys
-        .get(&key_file)
+    keys.get(&key_file)
         .map(|d| d.contains_key(&dname))
-        .unwrap_or(false))
+        .unwrap_or(false)
+}
+
+fn handle_update_query(
+    dnsr: Arc<crate::service::Dnsr>,
+    message: Message<Bytes>,
+) -> HandlerResult<()> {
+    log::debug!("handle_update_query");
+    let authority = message.authority()?;
+    let mut records: HashMap<(Rtype, Ttl), Vec<StoredRecordData>> = HashMap::new();
+
+    for a in authority {
+        let a = a?.to_record::<AllRecordData<Bytes, ParsedName<Bytes>>>()?;
+
+        if let Some(record) = a {
+            let data: ZoneRecordData<Bytes, Name<Bytes>> = match record.data() {
+                AllRecordData::Txt(txt) => txt.clone().into(),
+                _ => unimplemented!(),
+            };
+
+            let record = StoredRecord::new(
+                record.owner().to_bytes(),
+                record.class(),
+                record.ttl(),
+                data,
+            );
+            records
+                .entry((record.rtype(), record.ttl()))
+                .or_default()
+                .push(record.data().to_owned());
+        }
+    }
+
+    let question = message.sole_question().unwrap();
+    let qtype = question.qtype();
+    let qname = question.qname().clone();
+    let records = Arc::new(Mutex::new(records));
+    let cloned_records = records.clone();
+
+    let op = Box::new(move |owner: Name<Bytes>, rrset: &Rrset| {
+        if rrset.rtype() == qtype && owner == qname {
+            let mut records = cloned_records.lock().unwrap();
+            records
+                .entry((rrset.rtype(), rrset.ttl()))
+                .or_default()
+                .extend(rrset.data().to_vec());
+        }
+    });
+
+    dnsr.zones.find_zone_walk(question.qname(), |zone| {
+        if let Some(zone) = zone {
+            zone.walk(op);
+        }
+    });
+
+    let mutex = Arc::try_unwrap(records).unwrap();
+    let records = mutex.into_inner().unwrap();
+
+    // TODO: handle this lot of unwraps
+    if let Some(zone) = dnsr.zones.find_zone(&question.qname()) {
+        let mut writer = zone.write().now_or_never().unwrap();
+        let open = writer.open().now_or_never().unwrap().unwrap();
+
+        records.into_iter().for_each(|((rtype, ttl), data)| {
+            let mut rset = Rrset::new(rtype, ttl);
+            data.into_iter().for_each(|data| rset.push_data(data));
+            open.update_rrset(rset.into_shared())
+                .now_or_never()
+                .unwrap()
+                .unwrap();
+        });
+        writer.commit().now_or_never().unwrap().unwrap();
+    }
+
+    Ok(())
 }

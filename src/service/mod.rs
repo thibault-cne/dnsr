@@ -1,35 +1,26 @@
 use core::future::{ready, Future};
 
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
-use bytes::Bytes;
 use domain::base::iana::Opcode;
 use domain::base::iana::{Class, Rcode};
 use domain::base::message_builder::AdditionalBuilder;
 use domain::base::Message;
 use domain::base::Name;
-use domain::base::ParsedName;
-use domain::base::Ttl;
 use domain::base::{Rtype, ToName};
 use domain::dep::octseq::OctetsBuilder;
 use domain::net::server::message::Request;
 use domain::net::server::service::CallResult;
 use domain::net::server::service::{Service, ServiceResult};
 use domain::net::server::util::mk_builder_for_target;
-use domain::rdata::AllRecordData;
-use domain::rdata::ZoneRecordData;
-use domain::zonetree::types::StoredRecord;
-use domain::zonetree::types::StoredRecordData;
 use domain::zonetree::Rrset;
 use domain::zonetree::{Answer, ReadableZone, Zone};
 use futures::channel::mpsc::unbounded;
 use futures::channel::mpsc::UnboundedSender;
 use futures::stream::{once, Stream};
-use futures::FutureExt;
 
 use crate::config::Config;
 use crate::error::Error;
@@ -86,11 +77,6 @@ impl Service<Vec<u8>> for Dnsr {
 
 impl HandleDNS for Dnsr {
     fn handle_non_axfr(&self, request: Request<Vec<u8>>) -> HandlerResult<CallResult<Vec<u8>>> {
-        let bytes = request.message().as_slice();
-        let message = Message::from_octets(Bytes::copy_from_slice(bytes)).unwrap();
-
-        handle_update_query(self, message)?;
-
         let answer = {
             let question = request.message().sole_question().unwrap();
             self.zones
@@ -225,76 +211,6 @@ impl HandleDNS for Dnsr {
 
         Ok(())
     }
-}
-
-fn handle_update_query(dnsr: &Dnsr, message: Message<Bytes>) -> HandlerResult<()> {
-    let authority = message.authority()?;
-    let mut records: HashMap<(Rtype, Ttl), Vec<StoredRecordData>> = HashMap::new();
-
-    for a in authority {
-        let a = a?.to_record::<AllRecordData<Bytes, ParsedName<Bytes>>>()?;
-
-        if let Some(record) = a {
-            let data: ZoneRecordData<Bytes, Name<Bytes>> = match record.data() {
-                AllRecordData::Txt(txt) => txt.clone().into(),
-                _ => unimplemented!(),
-            };
-
-            let record = StoredRecord::new(
-                record.owner().to_bytes(),
-                record.class(),
-                record.ttl(),
-                data,
-            );
-            records
-                .entry((record.rtype(), record.ttl()))
-                .or_default()
-                .push(record.data().to_owned());
-        }
-    }
-
-    let question = message.sole_question().unwrap();
-    let qtype = question.qtype();
-    let qname = question.qname().clone();
-    let records = Arc::new(Mutex::new(records));
-    let cloned_records = records.clone();
-
-    let op = Box::new(move |owner: Name<Bytes>, rrset: &Rrset| {
-        if rrset.rtype() == qtype && owner == qname {
-            let mut records = cloned_records.lock().unwrap();
-            records
-                .entry((rrset.rtype(), rrset.ttl()))
-                .or_default()
-                .extend(rrset.data().to_vec());
-        }
-    });
-
-    dnsr.zones.find_zone_walk(question.qname(), |zone| {
-        if let Some(zone) = zone {
-            zone.walk(op);
-        }
-    });
-
-    let mutex = Arc::try_unwrap(records).unwrap();
-    let records = mutex.into_inner().unwrap();
-
-    // TODO: handle this lot of unwraps
-    if let Some(zone) = dnsr.zones.find_zone(&question.qname()) {
-        let mut writer = zone.write().now_or_never().unwrap();
-        let open = writer.open().now_or_never().unwrap().unwrap();
-
-        records.into_iter().for_each(|((rtype, ttl), data)| {
-            let mut rset = Rrset::new(rtype, ttl);
-            data.into_iter().for_each(|data| rset.push_data(data));
-            open.update_rrset(rset.into_shared())
-                .now_or_never()
-                .unwrap()
-                .unwrap();
-        });
-        writer.commit().now_or_never().unwrap().unwrap();
-    }
-
-    Ok(())
 }
 
 fn add_to_stream(
