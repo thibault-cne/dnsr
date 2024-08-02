@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use domain::base::iana::Class;
-use domain::base::{Record, Serial, ToName, Ttl};
+use domain::base::{Name, Record, Serial, ToName, Ttl};
 use domain::rdata::Soa;
 use domain::tsig::{Algorithm, Key, KeyName};
 use domain::zonetree::types::{StoredName, StoredRecord};
@@ -51,6 +51,16 @@ pub struct DomainInfo {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 pub struct DomainName(String);
+
+impl DomainName {
+    pub fn strip_prefix(self) -> Self {
+        if let Some(dname) = self.0.strip_prefix("_acme-challenge.") {
+            Self(dname.to_string())
+        } else {
+            self
+        }
+    }
+}
 
 pub trait TryInto<T> {
     fn try_into_t(self) -> Result<T>;
@@ -113,6 +123,12 @@ impl TryInto<StoredName> for &DomainName {
     }
 }
 
+impl From<&Name<Bytes>> for DomainName {
+    fn from(value: &Name<Bytes>) -> Self {
+        DomainName(value.to_string())
+    }
+}
+
 impl<B> TryInto<StoredName> for B
 where
     B: AsRef<[u8]>,
@@ -149,6 +165,12 @@ impl TryFrom<&KeyFile> for KeyName {
 
     fn try_from(kf: &KeyFile) -> Result<Self> {
         Ok(KeyName::from_str(&kf.0)?)
+    }
+}
+
+impl From<&KeyName> for KeyFile {
+    fn from(kn: &KeyName) -> Self {
+        Self(kn.to_string())
     }
 }
 
