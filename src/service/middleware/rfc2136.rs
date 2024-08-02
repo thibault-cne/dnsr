@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use domain::base::iana::Rcode;
+use domain::base::iana::{Class, Rcode};
 use domain::base::message_builder::AdditionalBuilder;
 use domain::base::wire::Composer;
 use domain::base::{Message, Name, ParsedName, Rtype, StreamTarget, ToName, Ttl};
@@ -17,7 +17,7 @@ use domain::net::server::util::mk_builder_for_target;
 use domain::rdata::tsig::Time48;
 use domain::rdata::{AllRecordData, ZoneRecordData};
 use domain::tsig::{Key, ServerSequence, ServerTransaction};
-use domain::zonetree::types::{StoredRecord, StoredRecordData};
+use domain::zonetree::types::StoredRecordData;
 use domain::zonetree::{Answer, Rrset};
 use futures::stream::Once;
 use futures::FutureExt;
@@ -66,7 +66,6 @@ where
                 match handle_update_query(dnsr.clone(), message_bytes) {
                     Ok(_) => {
                         log::info!(target: "update", "successfully updated the zone");
-                        log::debug!("{:?}", dnsr.zones);
                         transaction.answer(response, Time48::now()).unwrap();
                         Ok(())
                     }
@@ -112,8 +111,6 @@ where
 
                 match handle_update_query(dnsr.clone(), message_bytes) {
                     Ok(_) => {
-                        log::info!(target: "update", "successfully updated the zone");
-                        log::debug!("{:?}", dnsr.zones);
                         sequence.answer(response, Time48::now()).unwrap();
                         Ok(())
                     }
@@ -226,9 +223,37 @@ fn handle_update_query(
     dnsr: Arc<crate::service::Dnsr>,
     message: Message<Bytes>,
 ) -> HandlerResult<()> {
-    log::debug!("handle_update_query");
+    // if there is no authority part then no update is made
+    if message.authority()?.next().is_none() {
+        log::info!(target: "update", "no authority part -- skipping zone update");
+        return Ok(());
+    }
+
     let authority = message.authority()?;
-    let mut records: HashMap<(Rtype, Ttl), Vec<StoredRecordData>> = HashMap::new();
+    let records: HashMap<(Rtype, Ttl), Vec<StoredRecordData>> = HashMap::new();
+
+    let question = message.sole_question().unwrap();
+    let records = Arc::new(Mutex::new(records));
+    let cloned_records = records.clone();
+
+    let op = Box::new(move |_owner: Name<Bytes>, rrset: &Rrset| {
+        let mut records = cloned_records.lock().unwrap();
+        records
+            .entry((rrset.rtype(), rrset.ttl()))
+            .or_default()
+            .extend(rrset.data().to_vec());
+    });
+
+    dnsr.zones.find_zone_walk(question.qname(), |zone| {
+        if let Some(zone) = zone {
+            zone.walk(op);
+        }
+    });
+
+    let mutex = Arc::try_unwrap(records).unwrap();
+    let mut records = mutex.into_inner().unwrap();
+
+    log::debug!("{:?}", records);
 
     for a in authority {
         let a = a?.to_record::<AllRecordData<Bytes, ParsedName<Bytes>>>()?;
@@ -239,43 +264,28 @@ fn handle_update_query(
                 _ => unimplemented!(),
             };
 
-            let record = StoredRecord::new(
-                record.owner().to_bytes(),
-                record.class(),
-                record.ttl(),
-                data,
-            );
-            records
-                .entry((record.rtype(), record.ttl()))
-                .or_default()
-                .push(record.data().to_owned());
+            match record.class() {
+                Class::IN => {
+                    records
+                        .entry((record.rtype(), record.ttl()))
+                        .or_default()
+                        .push(data);
+                }
+                Class::NONE => {
+                    // Here we don't take ttl as a key because in delete
+                    // queries ttl is 0
+                    for ((rtype, _), entry) in records.iter_mut() {
+                        if rtype == &record.rtype() {
+                            if let Some(index) = entry.iter().position(|r| r == &data) {
+                                entry.remove(index);
+                            }
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            };
         }
     }
-
-    let question = message.sole_question().unwrap();
-    let qtype = question.qtype();
-    let qname = question.qname().clone();
-    let records = Arc::new(Mutex::new(records));
-    let cloned_records = records.clone();
-
-    let op = Box::new(move |owner: Name<Bytes>, rrset: &Rrset| {
-        if rrset.rtype() == qtype && owner == qname {
-            let mut records = cloned_records.lock().unwrap();
-            records
-                .entry((rrset.rtype(), rrset.ttl()))
-                .or_default()
-                .extend(rrset.data().to_vec());
-        }
-    });
-
-    dnsr.zones.find_zone_walk(question.qname(), |zone| {
-        if let Some(zone) = zone {
-            zone.walk(op);
-        }
-    });
-
-    let mutex = Arc::try_unwrap(records).unwrap();
-    let records = mutex.into_inner().unwrap();
 
     // TODO: handle this lot of unwraps
     if let Some(zone) = dnsr.zones.find_zone(&question.qname()) {
@@ -293,5 +303,6 @@ fn handle_update_query(
         writer.commit().now_or_never().unwrap().unwrap();
     }
 
+    log::info!(target: "update", "successfully updated the zone");
     Ok(())
 }

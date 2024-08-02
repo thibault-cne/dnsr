@@ -6,9 +6,9 @@
 # If not present, the values below are used as defaults.
 log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
-  level: info
+  level: debug
   # Enable the metrics.
-  enable_metrics: true
+  enable_metrics: false
   # Enable thread ID in logs.
   enable_thread_id: false
   # Log on stderr.
