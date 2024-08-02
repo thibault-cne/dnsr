@@ -1,5 +1,5 @@
 mod metric;
-mod tsig;
+mod rfc2136;
 
 pub use metric::{MetricsMiddlewareSvc, Stats};
-pub use tsig::TsigMiddlewareSvc;
+pub use rfc2136::Rfc2136MiddlewareSvc;
