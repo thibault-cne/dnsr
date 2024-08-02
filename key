@@ -1,4 +1,0 @@
-key "key1" {
-    algorithm hmac-sha512;
-    secret "F2BR0YaL2hiOpEDlUdv6U9mi4dI/xPZvuWQRbvC3G9MT9xLOoGzjk5lcXvmv4sekas8cq1kHutvwvlDOSnG3Aw==";
-};
