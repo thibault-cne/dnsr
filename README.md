@@ -25,13 +25,15 @@ The `config.yml` file is used to configure the `dnsr server. The following is th
 # This file is located at the path in the `DNSR_CONFIG` environment variable or in the `/etc/dnsr/config.yml` file.
 
 # The log configuration.
+# This part is optional and every field is optional.
+# If not present, the values below are used as defaults.
 log:
   # The log level. This can be one of the following: trace, debug, info, warn, error, or off.
   level: info
   # Enable the metrics.
   enable_metrics: true
   # Enable thread ID in logs.
-  enable_thread_id: true
+  enable_thread_id: false
   # Log on stderr.
   stderr: false
 

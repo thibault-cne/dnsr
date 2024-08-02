@@ -10,7 +10,8 @@ pub const BASE_CONFIG_FILE: &str = "/etc/dnsr/config.yml";
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
-    pub log: LogConfig,
+    log: Option<LogConfig>,
+
     pub keys: Keys,
 }
 
@@ -22,6 +23,10 @@ impl Config {
     pub fn tsig_path(&self) -> &Path {
         Path::new(TSIG_PATH)
     }
+
+    pub fn log_config(&self) -> LogConfig {
+        self.log.unwrap_or_default()
+    }
 }
 
 impl TryFrom<&Vec<u8>> for Config {
@@ -32,27 +37,50 @@ impl TryFrom<&Vec<u8>> for Config {
     }
 }
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Deserialize, Default, Clone, Copy, Debug)]
 pub struct LogConfig {
-    #[serde(deserialize_with = "de_level_filter")]
-    pub level: log::LevelFilter,
-    pub enable_metrics: bool,
-    pub enable_thread_id: bool,
-    pub stderr: bool,
+    #[serde(deserialize_with = "de_opt_level_filter")]
+    level: Option<log::LevelFilter>,
+    enable_metrics: Option<bool>,
+    enable_thread_id: Option<bool>,
+    stderr: Option<bool>,
 }
 
-fn de_level_filter<'de, D>(deserializer: D) -> std::result::Result<log::LevelFilter, D::Error>
+impl LogConfig {
+    pub fn level(&self) -> log::LevelFilter {
+        self.level.unwrap_or(log::LevelFilter::Info)
+    }
+
+    pub fn enable_metrics(&self) -> bool {
+        self.enable_metrics.unwrap_or(true)
+    }
+
+    pub fn enable_thread_id(&self) -> bool {
+        self.enable_thread_id.unwrap_or(false)
+    }
+
+    pub fn stderr(&self) -> bool {
+        self.stderr.unwrap_or(false)
+    }
+}
+
+fn de_opt_level_filter<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<log::LevelFilter>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s: LevelFilter = Deserialize::deserialize(deserializer)?;
+    let s: Option<LevelFilter> = Deserialize::deserialize(deserializer)?;
+    let Some(s) = s else {
+        return Ok(None);
+    };
     match s {
-        LevelFilter::Off => Ok(log::LevelFilter::Off),
-        LevelFilter::Error => Ok(log::LevelFilter::Error),
-        LevelFilter::Warn => Ok(log::LevelFilter::Warn),
-        LevelFilter::Info => Ok(log::LevelFilter::Info),
-        LevelFilter::Debug => Ok(log::LevelFilter::Debug),
-        LevelFilter::Trace => Ok(log::LevelFilter::Trace),
+        LevelFilter::Off => Ok(Some(log::LevelFilter::Off)),
+        LevelFilter::Error => Ok(Some(log::LevelFilter::Error)),
+        LevelFilter::Warn => Ok(Some(log::LevelFilter::Warn)),
+        LevelFilter::Info => Ok(Some(log::LevelFilter::Info)),
+        LevelFilter::Debug => Ok(Some(log::LevelFilter::Debug)),
+        LevelFilter::Trace => Ok(Some(log::LevelFilter::Trace)),
     }
 }
 

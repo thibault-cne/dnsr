@@ -61,10 +61,10 @@ async fn main() {
 
     // Initialize the custom logger
     logger::Logger::new()
-        .with_level(config.log.level)
-        .with_metrics(config.log.enable_metrics)
-        .with_stderr(config.log.stderr)
-        .with_thread(config.log.enable_thread_id)
+        .with_level(config.log_config().level())
+        .with_metrics(config.log_config().enable_metrics())
+        .with_stderr(config.log_config().stderr())
+        .with_thread(config.log_config().enable_thread_id())
         .init()
         .expect("Failed to initialize custom logger");
 
