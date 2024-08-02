@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 base64 = "0.22.1"
 bytes = "1.6.1"
-convert_case = "0.6.0"
 domain = { features = [
     "zonefile",
     "net",
