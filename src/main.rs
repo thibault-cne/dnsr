@@ -28,7 +28,7 @@ use domain::net::server::middleware::mandatory::MandatoryMiddlewareSvc;
 use domain::net::server::stream::StreamServer;
 use tokio::net::{TcpListener, UdpSocket};
 
-use crate::service::middleware::{MetricsMiddlewareSvc, Stats, TsigMiddlewareSvc};
+use crate::service::middleware::{MetricsMiddlewareSvc, Rfc2136MiddlewareSvc, Stats};
 use crate::service::Watcher;
 
 mod config;
@@ -76,7 +76,7 @@ async fn main() {
     let dnsr = Arc::new(dnsr);
     let dnsr_svc = EdnsMiddlewareSvc::new(dnsr.clone());
     let dnsr_svc = MandatoryMiddlewareSvc::new(dnsr_svc);
-    let dnsr_svc = TsigMiddlewareSvc::new(dnsr.clone(), dnsr_svc);
+    let dnsr_svc = Rfc2136MiddlewareSvc::new(dnsr.clone(), dnsr_svc);
     let dnsr_svc = MetricsMiddlewareSvc::new(dnsr_svc, stats.clone());
 
     let addr = "0.0.0.0:53";

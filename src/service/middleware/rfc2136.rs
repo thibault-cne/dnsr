@@ -26,13 +26,13 @@ use crate::key::{DomainName, KeyStore, Keys};
 use crate::service::handler::HandlerResult;
 
 #[derive(Clone, Debug)]
-pub struct TsigMiddlewareSvc<Octets, Svc> {
+pub struct Rfc2136MiddlewareSvc<Octets, Svc> {
     dnsr: Arc<crate::service::Dnsr>,
     svc: Svc,
     _octets: PhantomData<Octets>,
 }
 
-impl<RequestOctets, Svc> TsigMiddlewareSvc<RequestOctets, Svc>
+impl<RequestOctets, Svc> Rfc2136MiddlewareSvc<RequestOctets, Svc>
 where
     RequestOctets: Octets + Send + Sync + Unpin + Clone,
     Svc: Service<RequestOctets>,
@@ -183,7 +183,7 @@ where
     }
 }
 
-impl<RequestOctets, Svc> Service<RequestOctets> for TsigMiddlewareSvc<RequestOctets, Svc>
+impl<RequestOctets, Svc> Service<RequestOctets> for Rfc2136MiddlewareSvc<RequestOctets, Svc>
 where
     RequestOctets: Octets + Send + Sync + 'static + Unpin + Clone,
     Svc: Service<RequestOctets>,
